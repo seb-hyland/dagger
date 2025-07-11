@@ -3,8 +3,11 @@
 version = 4
 
 [[package]]
-name = "dagger-lib"
+name = "dagger"
 version = "0.1.0"
+dependencies = [
+ "dagger-macros",
+]
 
 [[package]]
 name = "dagger-macros"
@@ -12,6 +15,13 @@ version = "0.1.0"
 dependencies = [
  "quote",
  "syn",
+]
+
+[[package]]
+name = "dagger-test"
+version = "0.1.0"
+dependencies = [
+ "dagger",
 ]
 
 [[package]]

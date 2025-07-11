@@ -1,3 +1,4 @@
+pub use dagger_macros::graph;
 use std::sync::{Arc, Condvar, Mutex};
 
 pub struct ProcessData<T: Clone> {
@@ -42,8 +43,4 @@ impl<T: Clone> ProcessData<T> {
             .expect("Mutexes should not poison!");
         guard.as_ref().unwrap().clone()
     }
-}
-
-pub mod prelude {
-    pub use super::ProcessData;
 }
