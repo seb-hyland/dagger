@@ -13,7 +13,7 @@ fn main() {
         f: double(d),
         g: div(e, f),
         g
-    };
+    }.exe();
     println!("{v}");
 }
 

@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Expr, Ident, Token, bracketed, parenthesized,
+    Ident, Token, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
@@ -103,7 +103,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
             quote! {
                 let #out_clone = #out_data.clone();
                 s.spawn(move || {
-                    #out_clone.wait_on()
+                    #out_clone.wait()
                 })
                 .join()
                 .unwrap()
@@ -121,7 +121,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
             quote! {
                 #(let #out_clone = #out_data.clone();)*
                 s.spawn(move || {
-                    (#(#out_clone.wait_on()),*)
+                    (#(#out_clone.wait()),*)
                 })
                 .join()
                 .unwrap()
@@ -130,7 +130,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
     };
 
     quote! {
-        {
+        ::dagger::Graph::new(|| {
             #(let #node_data = ::dagger::ProcessData::new();)*
             ::std::thread::scope(move |s| {
                 #(
@@ -138,7 +138,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
                     let #node_data_clone = #node_data.clone();
                     s.spawn(move || {
                         #(
-                            let #node_parents = #node_parent_data_clones.wait_on();
+                            let #node_parents = #node_parent_data_clones.wait();
                         )*
                         let result = #node_process(#(#node_parents),*);
                         #node_data_clone.set(result);
@@ -146,7 +146,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
                 )*
                 #out_tokens
             })
-        }
+        })
     }
     .into()
 }

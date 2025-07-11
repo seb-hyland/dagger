@@ -1,6 +1,20 @@
 pub use dagger_macros::graph;
 use std::sync::{Arc, Condvar, Mutex};
 
+pub struct Graph<T> {
+    func: fn() -> T,
+}
+
+impl<T> Graph<T> {
+    pub fn new(func: fn() -> T) -> Graph<T> {
+        Graph { func }
+    }
+
+    pub fn exe(&self) -> T {
+        (self.func)()
+    }
+}
+
 pub struct ProcessData<T: Clone> {
     inner: Arc<ProcessDataInner<T>>,
 }
@@ -34,7 +48,7 @@ impl<T: Clone> ProcessData<T> {
         self.inner.condvar.notify_all();
     }
 
-    pub fn wait_on(&self) -> T {
+    pub fn wait(&self) -> T {
         let guard = self.inner.data.lock().expect("Mutexes should not poison!");
         let guard = self
             .inner
