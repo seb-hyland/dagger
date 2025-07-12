@@ -1,11 +1,21 @@
-use proc_macro::TokenStream;
+use std::{
+    fmt::Write,
+    fs::{create_dir_all, write},
+    path::{Path, PathBuf},
+};
+
+use layout::{
+    backends::svg::SVGWriter,
+    gv::{DotParser, GraphBuilder},
+};
+use proc_macro::{Span, TokenStream};
 use quote::quote;
 use syn::{
     Ident, Token, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
-    token::{Comma, Paren},
+    token::{Colon, Comma, Paren},
 };
 
 enum GraphOutput {
@@ -14,7 +24,7 @@ enum GraphOutput {
 }
 
 struct GraphStructure {
-    graph: Vec<Node>,
+    nodes: Vec<Node>,
     output: GraphOutput,
 }
 
@@ -44,11 +54,11 @@ impl Parse for Node {
 
 impl Parse for GraphStructure {
     fn parse(input: parse::ParseStream) -> syn::Result<Self> {
-        let mut graph = Vec::new();
-        while input.peek(Ident) && input.peek2(Token![:]) {
+        let mut nodes = Vec::new();
+        while input.peek(Ident) && input.peek2(Colon) {
             let node: Node = input.parse()?;
-            graph.push(node);
-            input.parse::<Token![,]>()?;
+            nodes.push(node);
+            let _: Comma = input.parse()?;
         }
         let output = if input.peek(Paren) {
             let parens_inner;
@@ -56,18 +66,75 @@ impl Parse for GraphStructure {
             let output = parens_inner.parse_terminated(Ident::parse, Comma)?;
             GraphOutput::Multi(output)
         } else {
-            let output = input.parse()?;
+            let output: Ident = input.parse()?;
             GraphOutput::Single(output)
         };
-        Ok(GraphStructure { graph, output })
+        Ok(GraphStructure { nodes, output })
     }
 }
 
-#[proc_macro]
-pub fn graph(input: TokenStream) -> TokenStream {
-    let GraphStructure { graph, output } = parse_macro_input!(input as GraphStructure);
+fn dot_to_svg(input: &str) -> String {
+    let graph = DotParser::new(input).process().unwrap();
+    let mut builder = GraphBuilder::new();
+    builder.visit_graph(&graph);
+    let mut vg = builder.get();
+    let mut svg = SVGWriter::new();
+    vg.do_it(false, false, false, &mut svg);
+    svg.finalize()
+}
 
-    let (node_name, node_process, node_parents): (Vec<_>, Vec<_>, Vec<Vec<_>>) = graph
+#[proc_macro]
+pub fn operation(input: TokenStream) -> TokenStream {
+    let GraphStructure { nodes, output } = parse_macro_input!(input as GraphStructure);
+
+    let dot = {
+        let mut dot = String::from("digraph {");
+        writeln!(&mut dot, "graph [rankdir=\"TB\"];").unwrap();
+        nodes.iter().for_each(|n| {
+            writeln!(
+                &mut dot,
+                "{} [shape=box label=\"{}: {}\"]",
+                n.name, n.name, n.process
+            )
+            .unwrap();
+            n.parents.iter().for_each(|parent| {
+                writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
+            });
+        });
+        writeln!(&mut dot, "crapper___[label=Output]").unwrap();
+        match &output {
+            GraphOutput::Single(out_node) => {
+                writeln!(&mut dot, "{out_node} -> crapper___").unwrap();
+            }
+            GraphOutput::Multi(out_nodes) => {
+                out_nodes
+                    .iter()
+                    .for_each(|out_node| writeln!(&mut dot, "{out_node} -> crapper___").unwrap());
+            }
+        }
+        // First } char escapes the second
+        writeln!(&mut dot, "}}").unwrap();
+        dot
+    };
+
+    let svg = dot_to_svg(&dot);
+
+    if cfg!(feature = "visualize") {
+        let filename = {
+            let span = Span::call_site().start();
+            let file_string = span.file();
+            let origin_file = Path::new(&file_string);
+            let file = origin_file.file_name().unwrap().to_string_lossy();
+            let (line, col) = (span.line(), span.column());
+            format!("{file}:{line}:{col}.svg")
+        };
+        let cargo_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let graph_dir = PathBuf::from(cargo_root).join("graphs");
+        create_dir_all(&graph_dir).unwrap();
+        write(graph_dir.join(filename), &svg).unwrap();
+    }
+
+    let (node_name, node_process, node_parents): (Vec<_>, Vec<_>, Vec<Vec<_>>) = nodes
         .into_iter()
         .map(|node| (node.name, node.process, node.parents.into_iter().collect()))
         .collect();
@@ -146,7 +213,7 @@ pub fn graph(input: TokenStream) -> TokenStream {
                 )*
                 #out_tokens
             })
-        })
+        }, #dot, #svg)
     }
     .into()
 }

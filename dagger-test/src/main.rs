@@ -1,27 +1,29 @@
 #![feature(custom_inner_attributes)]
 #![rustfmt::skip]
 
-use dagger::graph;
+use dagger::{operation};
 
 fn main() {
-    for _ in 0..100000 {
-        let v = graph! {
-            a: input1(),
-            b: input2(),
-            c: sum(a, b),
-            d: mult(a, b),
-            e: sum(c, d),
-            f: double(d),
-            g: div(e, f),
-            g
-        }.exe();
-        println!("{v}");
-    }
+    let input1 = || 3;
+    let input2 = || 5;
+    let f32toi32 = |v: f32| v.floor() as i32;
+    let operation = operation! {
+        input1: input1(),
+        input2: input2(),
+        c: sum(input1, input2),
+        d: mult(input1, input2),
+        e: sum(c, d),
+        f: double(d),
+        g: div(e, f),
+        h: f32toi32(g),
+        i: sum(input1, input2),
+        out: double(h),
+        (out, e, c)
+    };
+    let _ = operation.savefig("hi.svg");
+    let result = operation.exe();
+    dbg!(result);
 }
-
-fn input1() -> i32 { 3 }
-
-fn input2() -> i32 { 5 }
 
 fn sum(a: i32, b: i32) -> i32 { a + b }
 

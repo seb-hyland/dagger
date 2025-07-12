@@ -14,3 +14,6 @@ libc = "0.2.174"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60.2", features = ["Win32_System_Threading"] }
+
+[features]
+visualize = ["dagger-macros/visualize"]

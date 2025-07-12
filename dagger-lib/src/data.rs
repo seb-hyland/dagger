@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-/// Trust me, I'm right
+/// Trust me, I'm right 😎
 /// ## Example:
 /// ```rust
 /// trust_me_bro! {
