@@ -4,7 +4,7 @@
 use dagger::graph;
 
 fn main() {
-    for _ in 0..100 {
+    for _ in 0..100000 {
         let v = graph! {
             a: input1(),
             b: input2(),

@@ -1,4 +1,11 @@
-use std::{cell::UnsafeCell, mem::MaybeUninit, sync::atomic::AtomicU32};
+use std::{
+    cell::UnsafeCell,
+    mem::MaybeUninit,
+    sync::atomic::{
+        AtomicU32,
+        Ordering::{Acquire, Relaxed},
+    },
+};
 
 pub struct ProcessData<T: Clone> {
     value: UnsafeCell<MaybeUninit<T>>,
@@ -24,14 +31,8 @@ impl<T: Clone> ProcessData<T> {
     }
 
     pub fn wait(&self) -> T {
-        self.state.wait();
-        unsafe {
-            self.value
-                .get()
-                .as_ref_unchecked()
-                .assume_init_read()
-                .clone()
-        }
+        self.state.wait_loaded();
+        unsafe { self.value.get().as_ref_unchecked().assume_init_read() }
     }
 }
 
@@ -47,11 +48,14 @@ impl Patience {
     }
 
     fn ready(&self) {
-        self.inner.store(1, std::sync::atomic::Ordering::Release);
+        self.inner.store(1, Relaxed);
         waiter::wake_all(&self.inner as *const AtomicU32);
     }
 
-    fn wait(&self) {
+    fn wait_loaded(&self) {
+        if self.inner.load(Acquire) != 0 {
+            return;
+        }
         waiter::wait_on(&self.inner);
     }
 }
@@ -134,21 +138,17 @@ mod waiter {
         #[link_name = "_ZNSt3__120__libcpp_atomic_waitEPVKvx"]
         fn __libcpp_atomic_wait(ptr: *const c_void, monitor: i64);
 
-        #[link_name = "_ZNSt3__123__cxx_atomic_notify_oneEPVKv"]
-        fn __cxx_atomic_notify_one(ptr: *const c_void);
-
         #[link_name = "_ZNSt3__123__cxx_atomic_notify_allEPVKv"]
         fn __cxx_atomic_notify_all(ptr: *const c_void);
     }
 
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
-        let ptr: *const AtomicU32 = cond;
-        let monitor = unsafe { __libcpp_atomic_monitor(ptr.cast()) };
+        let monitor = unsafe { __libcpp_atomic_monitor(cond.cast()) };
         if cond.load(Relaxed) != 0 {
             return;
         }
-        unsafe { __libcpp_atomic_wait(ptr.cast(), monitor) };
+        unsafe { __libcpp_atomic_wait(cond.cast(), monitor) };
     }
 
     #[inline]
