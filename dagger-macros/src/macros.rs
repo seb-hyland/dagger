@@ -101,8 +101,8 @@ pub fn graph(input: TokenStream) -> TokenStream {
             let out_data = Ident::new(&format!("{out_ident}_data"), out_ident.span());
             let out_clone = Ident::new(&format!("{out_ident}_data_c"), out_ident.span());
             quote! {
-                let #out_clone = #out_data.clone();
-                s.spawn(move || {
+                let #out_clone = &#out_data;
+                s.spawn(|| {
                     #out_clone.wait()
                 })
                 .join()
@@ -119,8 +119,8 @@ pub fn graph(input: TokenStream) -> TokenStream {
                 .map(|out_ident| Ident::new(&format!("{out_ident}_data_c"), out_ident.span()))
                 .collect();
             quote! {
-                #(let #out_clone = #out_data.clone();)*
-                s.spawn(move || {
+                #(let #out_clone = &#out_data;)*
+                s.spawn(|| {
                     (#(#out_clone.wait()),*)
                 })
                 .join()
@@ -131,12 +131,12 @@ pub fn graph(input: TokenStream) -> TokenStream {
 
     quote! {
         ::dagger::Graph::new(|| {
-            #(let #node_data = ::dagger::ProcessData::new();)*
-            ::std::thread::scope(move |s| {
+            #(let #node_data = ::dagger::data::ProcessData::new();)*
+            ::std::thread::scope(|s| {
                 #(
-                    #(let #node_parent_data_clones = #node_parent_data.clone();)*
-                    let #node_data_clone = #node_data.clone();
-                    s.spawn(move || {
+                    #(let #node_parent_data_clones = &#node_parent_data;)*
+                    let #node_data_clone = &#node_data;
+                    s.spawn(|| {
                         #(
                             let #node_parents = #node_parent_data_clones.wait();
                         )*

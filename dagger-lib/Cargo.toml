@@ -8,3 +8,9 @@ path = "src/lib.rs"
 
 [dependencies]
 dagger-macros = { path = "../dagger-macros" }
+
+[target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))'.dependencies]
+libc = "0.2.174"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60.2", features = ["Win32_System_Threading"] }

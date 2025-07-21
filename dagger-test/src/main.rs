@@ -4,17 +4,19 @@
 use dagger::graph;
 
 fn main() {
-    let v = graph! {
-        a: input1(),
-        b: input2(),
-        c: sum(a, b),
-        d: mult(a, b),
-        e: sum(c, d),
-        f: double(d),
-        g: div(e, f),
-        g
-    }.exe();
-    println!("{v}");
+    for _ in 0..100 {
+        let v = graph! {
+            a: input1(),
+            b: input2(),
+            c: sum(a, b),
+            d: mult(a, b),
+            e: sum(c, d),
+            f: double(d),
+            g: div(e, f),
+            g
+        }.exe();
+        println!("{v}");
+    }
 }
 
 fn input1() -> i32 { 3 }
