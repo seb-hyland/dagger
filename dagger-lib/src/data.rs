@@ -131,7 +131,7 @@ mod waiter {
     };
 
     #[link(name = "c++")]
-    extern "C" {
+    unsafe extern "C" {
         #[link_name = "_ZNSt3__123__libcpp_atomic_monitorEPVKv"]
         fn __libcpp_atomic_monitor(ptr: *const c_void) -> i64;
 
@@ -144,11 +144,12 @@ mod waiter {
 
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
-        let monitor = unsafe { __libcpp_atomic_monitor(cond.cast()) };
+        let ptr = cond.as_ptr();
+        let monitor = unsafe { __libcpp_atomic_monitor(ptr.cast()) };
         if cond.load(Relaxed) != 0 {
             return;
         }
-        unsafe { __libcpp_atomic_wait(cond.cast(), monitor) };
+        unsafe { __libcpp_atomic_wait(ptr.cast(), monitor) };
     }
 
     #[inline]
