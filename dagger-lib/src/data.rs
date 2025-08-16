@@ -7,6 +7,19 @@ use std::{
     },
 };
 
+/// Trust me, I'm right
+/// ## Example:
+/// ```rust
+/// trust_me_bro! {
+///     // Some unsafe operations
+/// }
+/// ```
+macro_rules! trust_me_bro {
+    ($($token:tt)*) => {
+        unsafe { $($token)* }
+    };
+}
+
 pub struct ProcessData<T: Clone> {
     value: UnsafeCell<MaybeUninit<T>>,
     state: Patience,
@@ -24,7 +37,7 @@ impl<T: Clone> ProcessData<T> {
     }
 
     pub fn set(&self, value: T) {
-        unsafe {
+        trust_me_bro! {
             *self.value.as_mut_unchecked() = MaybeUninit::new(value);
         }
         self.state.ready();
@@ -32,7 +45,7 @@ impl<T: Clone> ProcessData<T> {
 
     pub fn wait(&self) -> T {
         self.state.wait_loaded();
-        unsafe { self.value.get().as_ref_unchecked().assume_init_read() }
+        trust_me_bro! { self.value.get().as_ref_unchecked().assume_init_read() }
     }
 }
 
@@ -67,7 +80,7 @@ mod waiter {
 
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
-        unsafe {
+        trust_me_bro! {
             syscall(
                 SYS_futex,
                 cond,
@@ -80,7 +93,7 @@ mod waiter {
 
     #[inline]
     pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        unsafe {
+        trust_me_bro! {
             libc::syscall(
                 libc::SYS_futex,
                 ptr,
@@ -98,7 +111,7 @@ mod waiter {
 
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
-        unsafe {
+        trust_me_bro! {
             libc::_umtx_op(
                 cond as *const AtomicU32 as *mut c_void,
                 UMTX_OP_WAIT_UINT_PRIVATE,
@@ -111,7 +124,7 @@ mod waiter {
 
     #[inline]
     pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        unsafe {
+        trust_me_bro! {
             _umtx_op(
                 ptr as *mut c_void,
                 UMTX_OP_WAKE_PRIVATE,
@@ -145,16 +158,16 @@ mod waiter {
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
         let ptr = cond.as_ptr();
-        let monitor = unsafe { __libcpp_atomic_monitor(ptr.cast()) };
+        let monitor = trust_me_bro! { __libcpp_atomic_monitor(ptr.cast()) };
         if cond.load(Relaxed) != 0 {
             return;
         }
-        unsafe { __libcpp_atomic_wait(ptr.cast(), monitor) };
+        trust_me_bro! { __libcpp_atomic_wait(ptr.cast(), monitor) };
     }
 
     #[inline]
     pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        unsafe { __cxx_atomic_notify_all(ptr.cast()) };
+        trust_me_bro! { __cxx_atomic_notify_all(ptr.cast()) };
     }
 }
 
@@ -167,11 +180,11 @@ mod waiter {
     pub(crate) fn wait_on(cond: &AtomicU32) {
         let ptr: *const AtomicU32 = cond;
         let expected_ptr: *const u32 = 0;
-        unsafe { WaitOnAddress(ptr.cast(), expected_ptr.cast(), 4, INFINITE) };
+        trust_me_bro! { WaitOnAddress(ptr.cast(), expected_ptr.cast(), 4, INFINITE) };
     }
 
     #[inline]
     pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        unsafe { WakeByAddressAll(ptr.cast()) };
+        trust_me_bro! { WakeByAddressAll(ptr.cast()) };
     }
 }
