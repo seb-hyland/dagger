@@ -76,7 +76,7 @@ impl Patience {
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod waiter {
     use core::{ptr, sync::atomic::AtomicU32};
-    use libc::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, SYS_futex, syscall, timespec};
+    use libc::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, SYS_futex, syscall, timespec};
 
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
@@ -94,10 +94,10 @@ mod waiter {
     #[inline]
     pub(crate) fn wake_all(ptr: *const AtomicU32) {
         trust_me_bro! {
-            libc::syscall(
-                libc::SYS_futex,
+            syscall(
+                SYS_futex,
                 ptr,
-                libc::FUTEX_WAKE | libc::FUTEX_PRIVATE_FLAG,
+                FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
                 i32::MAX,
             );
         };
@@ -112,10 +112,10 @@ mod waiter {
     #[inline]
     pub(crate) fn wait_on(cond: &AtomicU32) {
         trust_me_bro! {
-            libc::_umtx_op(
+            _umtx_op(
                 cond as *const AtomicU32 as *mut c_void,
                 UMTX_OP_WAIT_UINT_PRIVATE,
-                0 as libc::c_ulong,
+                0 as c_ulong,
                 null_mut(),
                 null_mut(),
             );
