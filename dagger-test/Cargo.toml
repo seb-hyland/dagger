@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-dagger = { path = "../dagger-lib", features = ["visualize"] }
+dagger = { path = "../dagger-lib" }
 
 [profile.release]
 debug = true

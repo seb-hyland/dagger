@@ -8,6 +8,7 @@ path = "src/lib.rs"
 
 [dependencies]
 dagger-macros = { path = "../dagger-macros" }
+layout-rs = { version="0.1.3", optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))'.dependencies]
 libc = "0.2.174"
@@ -16,4 +17,5 @@ libc = "0.2.174"
 windows-sys = { version = "0.60.2", features = ["Win32_System_Threading"] }
 
 [features]
-visualize = ["dagger-macros/visualize"]
+default = ["visualize"]
+visualize = ["dep:layout-rs", "dagger-macros/visualize"]

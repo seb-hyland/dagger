@@ -1,20 +1,13 @@
-use std::{
-    fmt::Write,
-    fs::{create_dir_all, write},
-    path::{Path, PathBuf},
-};
+use std::fmt::Write;
 
-use layout::{
-    backends::svg::SVGWriter,
-    gv::{DotParser, GraphBuilder},
-};
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, Token, parenthesized,
+    Ident, LitStr, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
+    spanned::Spanned,
     token::{Colon, Comma, Paren},
 };
 
@@ -36,13 +29,13 @@ struct Node {
 
 impl Parse for Node {
     fn parse(input: parse::ParseStream) -> syn::Result<Self> {
-        let name = input.parse::<Ident>()?;
-        let _ = input.parse::<Token![:]>()?;
-        let process = input.parse::<Ident>()?;
+        let name: Ident = input.parse()?;
+        let _: Colon = input.parse()?;
+        let process: Ident = input.parse()?;
 
         let parents;
         parenthesized!(parents in input);
-        let parents = parents.parse_terminated(Ident::parse, Token![,])?;
+        let parents = parents.parse_terminated(Ident::parse, Comma)?;
 
         Ok(Node {
             name,
@@ -73,66 +66,47 @@ impl Parse for GraphStructure {
     }
 }
 
-fn dot_to_svg(input: &str) -> String {
-    let graph = DotParser::new(input).process().unwrap();
-    let mut builder = GraphBuilder::new();
-    builder.visit_graph(&graph);
-    let mut vg = builder.get();
-    let mut svg = SVGWriter::new();
-    vg.do_it(false, false, false, &mut svg);
-    svg.finalize()
-}
-
 #[proc_macro]
-pub fn operation(input: TokenStream) -> TokenStream {
+pub fn dagger(input: TokenStream) -> TokenStream {
     let GraphStructure { nodes, output } = parse_macro_input!(input as GraphStructure);
 
     let dot = {
-        let mut dot = String::from("digraph {");
-        writeln!(&mut dot, "graph [rankdir=\"TB\"];").unwrap();
-        nodes.iter().for_each(|n| {
-            writeln!(
-                &mut dot,
-                "{} [shape=box label=\"{}: {}\"]",
-                n.name, n.name, n.process
-            )
-            .unwrap();
-            n.parents.iter().for_each(|parent| {
-                writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
+        if cfg!(feature = "visualize") {
+            let mut dot = String::from("digraph {");
+            writeln!(&mut dot, "graph [rankdir=\"TB\"];").unwrap();
+            nodes.iter().for_each(|n| {
+                writeln!(
+                    &mut dot,
+                    "{} [shape=box label=\"{}: {}\"]",
+                    n.name, n.name, n.process
+                )
+                .unwrap();
+                n.parents.iter().for_each(|parent| {
+                    writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
+                });
             });
-        });
-        writeln!(&mut dot, "crapper___[label=Output]").unwrap();
-        match &output {
-            GraphOutput::Single(out_node) => {
-                writeln!(&mut dot, "{out_node} -> crapper___").unwrap();
+            writeln!(&mut dot, "crapper___[label=Output]").unwrap();
+            match &output {
+                GraphOutput::Single(out_node) => {
+                    writeln!(&mut dot, "{out_node} -> crapper___").unwrap();
+                }
+                GraphOutput::Multi(out_nodes) => {
+                    out_nodes.iter().for_each(|out_node| {
+                        writeln!(&mut dot, "{out_node} -> crapper___").unwrap()
+                    });
+                }
             }
-            GraphOutput::Multi(out_nodes) => {
-                out_nodes
-                    .iter()
-                    .for_each(|out_node| writeln!(&mut dot, "{out_node} -> crapper___").unwrap());
+            // First } char escapes the second
+            writeln!(&mut dot, "}}").unwrap();
+            let dot_lit = LitStr::new(&dot, dot.span());
+
+            quote! {
+                #dot_lit
             }
+        } else {
+            quote! {}
         }
-        // First } char escapes the second
-        writeln!(&mut dot, "}}").unwrap();
-        dot
     };
-
-    let svg = dot_to_svg(&dot);
-
-    if cfg!(feature = "visualize") {
-        let filename = {
-            let span = Span::call_site().start();
-            let file_string = span.file();
-            let origin_file = Path::new(&file_string);
-            let file = origin_file.file_name().unwrap().to_string_lossy();
-            let (line, col) = (span.line(), span.column());
-            format!("{file}:{line}:{col}.svg")
-        };
-        let cargo_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
-        let graph_dir = PathBuf::from(cargo_root).join("graphs");
-        create_dir_all(&graph_dir).unwrap();
-        write(graph_dir.join(filename), &svg).unwrap();
-    }
 
     let (node_name, node_process, node_parents): (Vec<_>, Vec<_>, Vec<Vec<_>>) = nodes
         .into_iter()
@@ -145,6 +119,10 @@ pub fn operation(input: TokenStream) -> TokenStream {
     let node_data_clone: Vec<_> = node_name
         .iter()
         .map(|name| Ident::new(&format!("{name}_data_c"), name.span()))
+        .collect();
+    let node_name: Vec<_> = node_name
+        .into_iter()
+        .map(|v| LitStr::new(&v.to_string(), v.span()))
         .collect();
     let node_parent_data: Vec<Vec<_>> = node_parents
         .iter()
@@ -162,6 +140,16 @@ pub fn operation(input: TokenStream) -> TokenStream {
                 .collect()
         })
         .collect();
+    let node_parent_check: Vec<_> = node_parents
+        .iter()
+        .map(|node_parents| {
+            if node_parents.is_empty() {
+                quote! { true }
+            } else {
+                quote! { #(#node_parents.is_ok())&&* }
+            }
+        })
+        .collect();
 
     let out_tokens = match output {
         GraphOutput::Single(out_ident) => {
@@ -169,11 +157,7 @@ pub fn operation(input: TokenStream) -> TokenStream {
             let out_clone = Ident::new(&format!("{out_ident}_data_c"), out_ident.span());
             quote! {
                 let #out_clone = &#out_data;
-                s.spawn(|| {
-                    #out_clone.wait()
-                })
-                .join()
-                .unwrap()
+                #out_clone.wait()
             }
         }
         GraphOutput::Multi(outputs) => {
@@ -187,33 +171,45 @@ pub fn operation(input: TokenStream) -> TokenStream {
                 .collect();
             quote! {
                 #(let #out_clone = &#out_data;)*
-                s.spawn(|| {
-                    (#(#out_clone.wait()),*)
-                })
-                .join()
-                .unwrap()
+                (#(#out_clone.wait()),*)
             }
         }
     };
 
-    quote! {
-        ::dagger::Graph::new(|| {
-            #(let #node_data = ::dagger::data::ProcessData::new();)*
+    quote! {{
+        use dagger::prelude::*;
+        Graph::new(|| {
+            #(let #node_data = ProcessData::new();)*
             ::std::thread::scope(|s| {
-                #(
-                    #(let #node_parent_data_clones = &#node_parent_data;)*
-                    let #node_data_clone = &#node_data;
-                    s.spawn(|| {
-                        #(
-                            let #node_parents = #node_parent_data_clones.wait();
-                        )*
-                        let result = #node_process(#(#node_parents),*);
-                        #node_data_clone.set(result);
-                    });
-                )*
+                    #(
+                        {
+                            let node_name = #node_name;
+                            #(let #node_parent_data_clones = &#node_parent_data;)*
+                            let #node_data_clone = &#node_data;
+                            s.spawn(|| {
+                                #(
+                                    let #node_parents = #node_parent_data_clones.wait();
+                                )*
+                                if #node_parent_check {
+                                    let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
+                                    let process_result = #node_process(#(#node_parents),*).into_process_result(node_name);
+                                    #node_data_clone.set(process_result);
+                                } else {
+                                    let mut joined_err = ProcessError::default();
+                                    #(
+                                        if let Err(e) = #node_parents {
+                                            e.push_error(node_name, &mut joined_err);
+                                        }
+                                    )*
+                                    #node_data_clone.set(Err(joined_err));
+                                }
+                            });
+                        }
+                    )*
                 #out_tokens
             })
-        }, #dot, #svg)
-    }
+        },
+        #dot)
+    }}
     .into()
 }
