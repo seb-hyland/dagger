@@ -1,12 +1,9 @@
-#![feature(custom_inner_attributes)]
-#![rustfmt::skip]
-
 use dagger::dagger;
 
 fn main() {
     let input1 = || 3;
-    let input2 = || 5;
-    let f32toi32 = |v: f32| v.floor() as i32;
+    let input2 = || 0;
+    let f32toi32 = |v: f32| -> Result<i32, String> { Ok(v.floor() as i32) };
     let operation = dagger! {
         input1: input1(),
         input2: input2(),
@@ -18,22 +15,34 @@ fn main() {
         h: f32toi32(g),
         i: sum(input1, input2),
         g_str: as_string(g),
-        print_g: print_string(g_str),
         out: double(h),
-        (out, e, c, g_str)
+        (out, e, d, g_str)
     };
     let result = operation.exe();
-    dbg!(result);
+    println!("{}", operation.dot());
+    let _ = dbg!(result);
 }
 
-fn sum(a: i32, b: i32) -> i32 { a + b }
+fn sum(a: i32, b: i32) -> i32 {
+    a + b
+}
 
-fn mult(a: i32, b: i32) -> i32 { a * b }
+fn mult(a: i32, b: i32) -> i32 {
+    a * b
+}
 
-fn div(a: i32, b: i32) -> f32 { a as f32 / b as f32 }
+fn div(a: i32, b: i32) -> Result<f32, &'static str> {
+    if b == 0 {
+        Err("Division by zero!")
+    } else {
+        Ok(a as f32 / b as f32)
+    }
+}
 
-fn double(input: i32) -> i32 { input * 2 }
+fn double(input: i32) -> i32 {
+    input * 2
+}
 
-fn as_string(input: f32) -> String { input.to_string() }
-
-fn print_string(input: String) { println!("{input}") }
+fn as_string(input: f32) -> String {
+    input.to_string()
+}

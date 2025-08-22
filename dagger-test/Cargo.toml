@@ -6,5 +6,9 @@ edition = "2024"
 [dependencies]
 dagger = { path = "../dagger-lib" }
 
+[[bin]]
+name = "expand"
+path = "src/expand.rs"
+
 [profile.release]
 debug = true

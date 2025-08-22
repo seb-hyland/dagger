@@ -7,11 +7,7 @@ pub mod process_data;
 #[cfg(feature = "visualize")]
 mod visualization;
 pub use dagger_macros::dagger;
-use std::{
-    error::Error,
-    ops::{Deref, DerefMut},
-    sync::Arc,
-};
+use std::ops::{Deref, DerefMut};
 
 pub struct Graph<T, F: Fn() -> T> {
     func: F,
@@ -42,9 +38,9 @@ impl<T, F: Fn() -> T> Graph<T, F> {
 
 pub type ProcessResult<T> = Result<T, ProcessError>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ProcessError(ProcessErrorInner);
-type ProcessErrorInner = Vec<(&'static str, Arc<dyn Error + Send + Sync>)>;
+type ProcessErrorInner = Vec<(&'static str, String)>;
 
 impl Deref for ProcessError {
     type Target = ProcessErrorInner;
@@ -66,10 +62,10 @@ impl<T> IntoProcessResult<T> for T {
         Ok(self)
     }
 }
-impl<T, E: Error + 'static + Send + Sync> IntoProcessResult<T> for Result<T, E> {
+impl<T, E: ToString> IntoProcessResult<T> for Result<T, E> {
     fn into_process_result(self, node: &'static str) -> ProcessResult<T> {
         match self {
-            Err(e) => Err(ProcessError(vec![(node, Arc::new(e))])),
+            Err(e) => Err(ProcessError(vec![(node, e.to_string())])),
             Ok(v) => Ok(v),
         }
     }
@@ -78,9 +74,9 @@ impl<T, E: Error + 'static + Send + Sync> IntoProcessResult<T> for Result<T, E> 
 pub trait PushProcessError<E> {
     fn push_error(&self, node: &'static str, error: &mut ProcessError);
 }
-impl<E: Error + 'static + Send + Sync + Clone> PushProcessError<E> for E {
+impl<E: ToString> PushProcessError<E> for E {
     fn push_error(&self, node: &'static str, error: &mut ProcessError) {
-        error.push((node, Arc::new(self.clone())));
+        error.push((node, self.to_string()));
     }
 }
 impl PushProcessError<ProcessError> for ProcessError {

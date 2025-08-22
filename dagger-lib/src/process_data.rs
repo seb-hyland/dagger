@@ -1,8 +1,4 @@
-use std::{
-    cell::UnsafeCell,
-    mem::MaybeUninit,
-    sync::atomic::{AtomicU32, Ordering},
-};
+use std::{cell::UnsafeCell, mem::MaybeUninit, ops::Deref, sync::Once};
 
 /// Trust me, I'm right 😎
 /// ## Example:
@@ -17,188 +13,57 @@ macro_rules! trust_me_bro {
     };
 }
 
-pub struct ProcessData<T> {
+pub struct ProcessData<T: Clone> {
     value: UnsafeCell<MaybeUninit<T>>,
-    state: Patience,
+    state: Once,
+}
+pub struct Setter<'a, T: Clone>(&'a ProcessData<T>);
+pub struct Receiver<'a, T: Clone>(&'a ProcessData<T>);
+
+unsafe impl<'a, T: Sync + Clone> Sync for Setter<'a, T> {}
+unsafe impl<'a, T: Send + Clone> Send for Setter<'a, T> {}
+unsafe impl<'a, T: Sync + Clone> Sync for Receiver<'a, T> {}
+unsafe impl<'a, T: Send + Clone> Send for Receiver<'a, T> {}
+
+impl<T: Clone> ProcessData<T> {
+    pub fn channel<'a>(&'a self) -> (Setter<'a, T>, Receiver<'a, T>) {
+        (Setter(self), Receiver(self))
+    }
 }
 
-unsafe impl<T: Sync> Sync for ProcessData<T> {}
-unsafe impl<T: Send> Send for ProcessData<T> {}
-
-impl<T> ProcessData<T> {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> ProcessData<T> {
+impl<T: Clone> Default for ProcessData<T> {
+    fn default() -> Self {
         ProcessData {
             value: UnsafeCell::new(MaybeUninit::uninit()),
-            state: Patience::new(),
+            state: Once::new(),
         }
     }
-
-    pub fn set(&self, value: T) {
-        if self.state.is_set() {
-            panic!("Tried to double set!");
-        };
-        trust_me_bro! {
-            *self.value.get() = MaybeUninit::new(value);
-        }
-        self.state.ready();
+}
+impl<'a, T: Clone> Deref for Setter<'a, T> {
+    type Target = &'a ProcessData<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
+}
+impl<'a, T: Clone> Deref for Receiver<'a, T> {
+    type Target = &'a ProcessData<T>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
+impl<'a, T: Clone> Setter<'a, T> {
+    pub fn set(self, value: T) {
+        self.state.call_once(|| {
+            trust_me_bro! {
+                *self.value.get() = MaybeUninit::new(value);
+            }
+        });
+    }
+}
+impl<'a, T: Clone> Receiver<'a, T> {
     pub fn wait(&self) -> T {
-        self.state.wait_loaded();
-        trust_me_bro! { (*self.value.get()).assume_init_read() }
-    }
-}
-
-struct Patience {
-    inner: AtomicU32,
-}
-
-impl Patience {
-    fn new() -> Patience {
-        Patience {
-            inner: AtomicU32::new(0),
-        }
-    }
-
-    #[inline]
-    fn is_set(&self) -> bool {
-        self.inner.load(Ordering::Acquire) == 1
-    }
-
-    #[inline]
-    fn ready(&self) {
-        self.inner.store(1, Ordering::Release);
-        waiter::wake_all(&self.inner as *const AtomicU32);
-    }
-
-    #[inline]
-    fn wait_loaded(&self) {
-        while self.inner.load(Ordering::Acquire) == 0 {
-            waiter::wait_on(&self.inner);
-        }
-    }
-}
-
-#[cfg(any(target_os = "linux", target_os = "android"))]
-mod waiter {
-    use core::{
-        ptr,
-        sync::atomic::{AtomicU32, Ordering},
-    };
-    use libc::{FUTEX_PRIVATE_FLAG, FUTEX_WAIT, FUTEX_WAKE, SYS_futex, syscall, timespec};
-
-    #[inline]
-    pub(crate) fn wait_on(cond: &AtomicU32) {
-        if cond.load(Ordering::Relaxed) != 0 {
-            return;
-        }
-        let addr = cond as *const AtomicU32;
-        trust_me_bro! {
-            syscall(
-                SYS_futex,
-                addr,
-                FUTEX_WAIT | FUTEX_PRIVATE_FLAG,
-                0,
-                ptr::null::<timespec>(),
-            );
-        };
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        trust_me_bro! {
-            syscall(
-                SYS_futex,
-                ptr,
-                FUTEX_WAKE | FUTEX_PRIVATE_FLAG,
-                i32::MAX,
-            );
-        };
-    }
-}
-
-#[cfg(target_os = "freebsd")]
-mod waiter {
-    use core::{ptr::null_mut, sync::atomic::AtomicU32};
-    use libc::{_umtx_op, UMTX_OP_WAIT_UINT_PRIVATE, UMTX_OP_WAKE_PRIVATE, c_ulong, c_void};
-
-    #[inline]
-    pub(crate) fn wait_on(cond: &AtomicU32) {
-        trust_me_bro! {
-            _umtx_op(
-                cond as *const AtomicU32 as *mut c_void,
-                UMTX_OP_WAIT_UINT_PRIVATE,
-                0 as c_ulong,
-                null_mut(),
-                null_mut(),
-            );
-        };
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        trust_me_bro! {
-            _umtx_op(
-                ptr as *mut c_void,
-                UMTX_OP_WAKE_PRIVATE,
-                i32::MAX as c_ulong,
-                null_mut(),
-                null_mut(),
-            );
-        };
-    }
-}
-
-#[cfg(any(target_os = "macos", target_os = "ios", target_os = "watchos"))]
-mod waiter {
-    use core::{
-        ffi::c_void,
-        sync::atomic::{AtomicU32, Ordering::Relaxed},
-    };
-
-    #[link(name = "c++")]
-    unsafe extern "C" {
-        #[link_name = "_ZNSt3__123__libcpp_atomic_monitorEPVKv"]
-        fn __libcpp_atomic_monitor(ptr: *const c_void) -> i64;
-
-        #[link_name = "_ZNSt3__120__libcpp_atomic_waitEPVKvx"]
-        fn __libcpp_atomic_wait(ptr: *const c_void, monitor: i64);
-
-        #[link_name = "_ZNSt3__123__cxx_atomic_notify_allEPVKv"]
-        fn __cxx_atomic_notify_all(ptr: *const c_void);
-    }
-
-    #[inline]
-    pub(crate) fn wait_on(cond: &AtomicU32) {
-        let ptr = cond.as_ptr();
-        let monitor = trust_me_bro! { __libcpp_atomic_monitor(ptr.cast()) };
-        if cond.load(Relaxed) != 0 {
-            return;
-        }
-        trust_me_bro! { __libcpp_atomic_wait(ptr.cast(), monitor) };
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        trust_me_bro! { __cxx_atomic_notify_all(ptr.cast()) };
-    }
-}
-
-#[cfg(target_os = "windows")]
-mod waiter {
-    use core::sync::atomic::AtomicU32;
-    use windows_sys::Win32::System::Threading::{INFINITE, WaitOnAddress, WakeByAddressAll};
-
-    #[inline]
-    pub(crate) fn wait_on(cond: &AtomicU32) {
-        let ptr: *const AtomicU32 = cond;
-        let expected_ptr: *const u32 = 0;
-        trust_me_bro! { WaitOnAddress(ptr.cast(), expected_ptr.cast(), 4, INFINITE) };
-    }
-
-    #[inline]
-    pub(crate) fn wake_all(ptr: *const AtomicU32) {
-        trust_me_bro! { WakeByAddressAll(ptr.cast()) };
+        self.state.wait();
+        trust_me_bro! { (*self.value.get()).assume_init_ref().clone() }
     }
 }

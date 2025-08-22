@@ -114,11 +114,15 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         .collect();
     let node_data: Vec<_> = node_name
         .iter()
-        .map(|name| Ident::new(&format!("{name}_data"), name.span()))
+        .map(|name| Ident::new(&format!("_{name}_data"), name.span()))
         .collect();
-    let node_data_clone: Vec<_> = node_name
+    let node_data_tx: Vec<_> = node_name
         .iter()
-        .map(|name| Ident::new(&format!("{name}_data_c"), name.span()))
+        .map(|name| Ident::new(&format!("_{name}_data_tx"), name.span()))
+        .collect();
+    let node_data_rx: Vec<_> = node_name
+        .iter()
+        .map(|name| Ident::new(&format!("_{name}_data_rx"), name.span()))
         .collect();
     let node_name: Vec<_> = node_name
         .into_iter()
@@ -128,15 +132,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         .iter()
         .map(|node| {
             node.iter()
-                .map(|parent| Ident::new(&format!("{parent}_data"), parent.span()))
-                .collect()
-        })
-        .collect();
-    let node_parent_data_clones: Vec<Vec<_>> = node_parents
-        .iter()
-        .map(|node| {
-            node.iter()
-                .map(|parent| Ident::new(&format!("{parent}_data_c"), parent.span()))
+                .map(|parent| Ident::new(&format!("_{parent}_data_rx"), parent.span()))
                 .collect()
         })
         .collect();
@@ -153,25 +149,18 @@ pub fn dagger(input: TokenStream) -> TokenStream {
 
     let out_tokens = match output {
         GraphOutput::Single(out_ident) => {
-            let out_data = Ident::new(&format!("{out_ident}_data"), out_ident.span());
-            let out_clone = Ident::new(&format!("{out_ident}_data_c"), out_ident.span());
+            let out_data = Ident::new(&format!("_{out_ident}_data_rx"), out_ident.span());
             quote! {
-                let #out_clone = &#out_data;
-                #out_clone.wait()
+                #out_data.wait()
             }
         }
         GraphOutput::Multi(outputs) => {
             let out_data: Vec<_> = outputs
                 .iter()
-                .map(|out_ident| Ident::new(&format!("{out_ident}_data"), out_ident.span()))
-                .collect();
-            let out_clone: Vec<_> = outputs
-                .iter()
-                .map(|out_ident| Ident::new(&format!("{out_ident}_data_c"), out_ident.span()))
+                .map(|out_ident| Ident::new(&format!("_{out_ident}_data_rx"), out_ident.span()))
                 .collect();
             quote! {
-                #(let #out_clone = &#out_data;)*
-                (#(#out_clone.wait()),*)
+                (#(#out_data.wait()),*)
             }
         }
     };
@@ -179,21 +168,20 @@ pub fn dagger(input: TokenStream) -> TokenStream {
     quote! {{
         use dagger::prelude::*;
         Graph::new(|| {
-            #(let #node_data = ProcessData::new();)*
+            #(let #node_data = ProcessData::default();)*
+            #(let (#node_data_tx, #node_data_rx) = #node_data.channel();)*
             ::std::thread::scope(|s| {
                     #(
                         {
                             let node_name = #node_name;
-                            #(let #node_parent_data_clones = &#node_parent_data;)*
-                            let #node_data_clone = &#node_data;
                             s.spawn(|| {
                                 #(
-                                    let #node_parents = #node_parent_data_clones.wait();
+                                    let #node_parents = #node_parent_data.wait();
                                 )*
                                 if #node_parent_check {
                                     let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
                                     let process_result = #node_process(#(#node_parents),*).into_process_result(node_name);
-                                    #node_data_clone.set(process_result);
+                                    #node_data_tx.set(process_result);
                                 } else {
                                     let mut joined_err = ProcessError::default();
                                     #(
@@ -201,7 +189,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                                             e.push_error(node_name, &mut joined_err);
                                         }
                                     )*
-                                    #node_data_clone.set(Err(joined_err));
+                                    #node_data_tx.set(Err(joined_err));
                                 }
                             });
                         }
