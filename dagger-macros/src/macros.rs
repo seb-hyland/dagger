@@ -3,12 +3,12 @@ use std::{collections::HashSet, fmt::Write};
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Expr, Ident, LitStr, parenthesized,
+    Expr, Ident, LitStr, Stmt, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
     spanned::Spanned,
-    token::{Colon, Comma, Paren},
+    token::{Colon, Comma, Paren, Semi},
 };
 
 enum GraphOutput {
@@ -54,7 +54,7 @@ impl Parse for GraphStructure {
         while input.peek(Ident) && input.peek2(Colon) && input.peek3(Colon) {
             let node: Node = input.parse()?;
             nodes.push(node);
-            let _: Comma = input.parse()?;
+            let _: Semi = input.parse()?;
         }
         let output = if input.peek(Paren) {
             let parens_inner;
@@ -91,26 +91,45 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                     node.parents.push(seg.ident.clone())
                 }
             }),
-            Expr::Unary(exp) => {
+            Expr::Call(exp) => exp
+                .args
+                .iter()
+                .for_each(|exp| identify_parents(exp, node, node_idents)),
+            Expr::Unary(exp) => identify_parents(&exp.expr, node, node_idents),
+            Expr::Reference(exp) => identify_parents(&exp.expr, node, node_idents),
+            Expr::Try(exp) => identify_parents(&exp.expr, node, node_idents),
+            Expr::MethodCall(exp) => {
+                identify_parents(&exp.receiver, node, node_idents);
+                exp.args
+                    .iter()
+                    .for_each(|exp| identify_parents(exp, node, node_idents));
+            }
+            Expr::Field(exp) => identify_parents(&exp.base, node, node_idents),
+            Expr::Index(exp) => {
                 identify_parents(&exp.expr, node, node_idents);
+                identify_parents(&exp.index, node, node_idents);
             }
             Expr::Binary(exp) => {
                 identify_parents(&exp.left, node, node_idents);
                 identify_parents(&exp.right, node, node_idents);
             }
-            Expr::Call(exp) => exp
-                .args
-                .iter()
-                .for_each(|exp| identify_parents(exp, node, node_idents)),
-            Expr::MethodCall(exp) => {
-                identify_parents(&exp.receiver, node, node_idents);
-                exp.args
+            Expr::Cast(exp) => identify_parents(&exp.expr, node, node_idents),
+            Expr::Paren(exp) => identify_parents(&exp.expr, node, node_idents),
+            Expr::Tuple(exp) => {
+                exp.elems
                     .iter()
-                    .for_each(|arg| identify_parents(arg, node, node_idents));
+                    .for_each(|exp| identify_parents(exp, node, node_idents));
             }
-            Expr::Cast(exp) => {
-                identify_parents(&exp.expr, node, node_idents);
+            Expr::Array(exp) => {
+                exp.elems
+                    .iter()
+                    .for_each(|exp| identify_parents(exp, node, node_idents));
             }
+            Expr::Block(exp) => exp.block.stmts.iter().for_each(|stmt| {
+                if let Stmt::Expr(exp, _) = stmt {
+                    identify_parents(exp, node, node_idents);
+                }
+            }),
             _ => {}
         }
     }
