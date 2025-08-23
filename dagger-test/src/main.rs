@@ -1,26 +1,26 @@
+use std::ops::Deref;
+
 use dagger::dagger;
 
 fn main() {
-    let input1 = || 3;
-    let input2 = || 0;
     let f32toi32 = |v: f32| -> Result<i32, String> { Ok(v.floor() as i32) };
+
     let operation = dagger! {
-        input1 :: input1();
-        input2 :: input2();
-        c :: sum(*input1, *input2);
-        d :: mult(*input1, *input2);
+        c :: sum(3, 5);
+        d :: mult(3, 5);
         e :: sum(*c + 2, *d);
         f :: double(*d);
-        g :: div(*e, *f);
+        g :: div(*e, 0);
         h :: f32toi32(*g);
-        i :: sum(*input1 + 14, *input2);
-        g_str_1 :: noop(g.to_string());
-        g_str :: noop(g.to_string().find(&*g_str_1));
+        i :: sum(3 + 14, 5);
+        g_str_1 :: g.to_string();
+        g_str :: { g.to_string() };
+        g_str_array :: [ g_str_1.deref().clone(), "Hi!".to_string() ];
         out :: double(*h);
-        (out, e, d, g_str)
+        (out, e, d, g_str_array)
     };
+
     let result = operation.exe();
-    println!("{}", operation.dot());
     let _ = dbg!(result);
 }
 
@@ -42,8 +42,4 @@ fn div(a: i32, b: i32) -> Result<f32, &'static str> {
 
 fn double(input: i32) -> i32 {
     input * 2
-}
-
-fn noop<T>(input: T) -> T {
-    input
 }
