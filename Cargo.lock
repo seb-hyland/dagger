@@ -21,13 +21,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dagger-test"
-version = "0.1.0"
-dependencies = [
- "dagger",
-]
-
-[[package]]
 name = "layout-rs"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
