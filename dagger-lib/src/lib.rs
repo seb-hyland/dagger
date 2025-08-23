@@ -7,7 +7,10 @@ pub mod process_data;
 #[cfg(feature = "visualize")]
 mod visualization;
 pub use dagger_macros::dagger;
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 pub struct Graph<T, F: Fn() -> T> {
     func: F,
@@ -36,7 +39,7 @@ impl<T, F: Fn() -> T> Graph<T, F> {
     }
 }
 
-pub type ProcessResult<T> = Result<T, ProcessError>;
+pub type ProcessResult<T> = Result<Arc<T>, ProcessError>;
 
 #[derive(Debug, Default, Clone)]
 pub struct ProcessError(ProcessErrorInner);
@@ -59,14 +62,14 @@ pub trait IntoProcessResult<T> {
 }
 impl<T> IntoProcessResult<T> for T {
     fn into_process_result(self, _node: &'static str) -> ProcessResult<T> {
-        Ok(self)
+        Ok(Arc::new(self))
     }
 }
 impl<T, E: ToString> IntoProcessResult<T> for Result<T, E> {
     fn into_process_result(self, node: &'static str) -> ProcessResult<T> {
         match self {
             Err(e) => Err(ProcessError(vec![(node, e.to_string())])),
-            Ok(v) => Ok(v),
+            Ok(v) => Ok(Arc::new(v)),
         }
     }
 }

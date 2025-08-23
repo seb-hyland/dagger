@@ -1,9 +1,9 @@
-use std::fmt::Write;
+use std::{collections::HashSet, fmt::Write};
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Ident, LitStr, parenthesized,
+    Expr, Ident, LitStr, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
@@ -24,23 +24,26 @@ struct GraphStructure {
 struct Node {
     name: Ident,
     process: Ident,
-    parents: Punctuated<Ident, Comma>,
+    args: Punctuated<Expr, Comma>,
+    parents: Vec<Ident>,
 }
 
 impl Parse for Node {
     fn parse(input: parse::ParseStream) -> syn::Result<Self> {
         let name: Ident = input.parse()?;
         let _: Colon = input.parse()?;
+        let _: Colon = input.parse()?;
         let process: Ident = input.parse()?;
 
-        let parents;
-        parenthesized!(parents in input);
-        let parents = parents.parse_terminated(Ident::parse, Comma)?;
+        let args;
+        parenthesized!(args in input);
+        let args = args.parse_terminated(Expr::parse, Comma)?;
 
         Ok(Node {
             name,
             process,
-            parents,
+            args,
+            parents: Vec::new(),
         })
     }
 }
@@ -48,7 +51,7 @@ impl Parse for Node {
 impl Parse for GraphStructure {
     fn parse(input: parse::ParseStream) -> syn::Result<Self> {
         let mut nodes = Vec::new();
-        while input.peek(Ident) && input.peek2(Colon) {
+        while input.peek(Ident) && input.peek2(Colon) && input.peek3(Colon) {
             let node: Node = input.parse()?;
             nodes.push(node);
             let _: Comma = input.parse()?;
@@ -68,7 +71,54 @@ impl Parse for GraphStructure {
 
 #[proc_macro]
 pub fn dagger(input: TokenStream) -> TokenStream {
-    let GraphStructure { nodes, output } = parse_macro_input!(input as GraphStructure);
+    let GraphStructure { mut nodes, output } = parse_macro_input!(input as GraphStructure);
+
+    let mut node_idents = HashSet::with_capacity(nodes.len());
+    for node in &nodes {
+        if !node_idents.insert(node.name.clone()) {
+            return syn::Error::new(
+                node.name.span(),
+                format!("Duplicate definition of node {}", node.name),
+            )
+            .into_compile_error()
+            .into();
+        }
+    }
+    fn identify_parents(arg: &Expr, node: &mut Node, node_idents: &HashSet<Ident>) {
+        match arg {
+            Expr::Path(exp) => exp.path.segments.iter().for_each(|seg| {
+                if node_idents.contains(&seg.ident) {
+                    node.parents.push(seg.ident.clone())
+                }
+            }),
+            Expr::Unary(exp) => {
+                identify_parents(&exp.expr, node, node_idents);
+            }
+            Expr::Binary(exp) => {
+                identify_parents(&exp.left, node, node_idents);
+                identify_parents(&exp.right, node, node_idents);
+            }
+            Expr::Call(exp) => exp
+                .args
+                .iter()
+                .for_each(|exp| identify_parents(exp, node, node_idents)),
+            Expr::MethodCall(exp) => {
+                identify_parents(&exp.receiver, node, node_idents);
+                exp.args
+                    .iter()
+                    .for_each(|arg| identify_parents(arg, node, node_idents));
+            }
+            Expr::Cast(exp) => {
+                identify_parents(&exp.expr, node, node_idents);
+            }
+            _ => {}
+        }
+    }
+    nodes.iter_mut().for_each(|node| {
+        let args = node.args.clone();
+        args.iter()
+            .for_each(|arg| identify_parents(arg, node, &node_idents))
+    });
 
     let dot = {
         if cfg!(feature = "visualize") {
@@ -108,9 +158,21 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         }
     };
 
-    let (node_name, node_process, node_parents): (Vec<_>, Vec<_>, Vec<Vec<_>>) = nodes
+    let (node_name, node_process, node_parents, node_args): (
+        Vec<_>,
+        Vec<_>,
+        Vec<Vec<_>>,
+        Vec<Vec<_>>,
+    ) = nodes
         .into_iter()
-        .map(|node| (node.name, node.process, node.parents.into_iter().collect()))
+        .map(|node| {
+            (
+                node.name,
+                node.process,
+                node.parents.into_iter().collect(),
+                node.args.into_iter().collect(),
+            )
+        })
         .collect();
     let node_data: Vec<_> = node_name
         .iter()
@@ -180,7 +242,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                                 )*
                                 if #node_parent_check {
                                     let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
-                                    let process_result = #node_process(#(#node_parents),*).into_process_result(node_name);
+                                    let process_result = #node_process(#(#node_args),*).into_process_result(node_name);
                                     #node_data_tx.set(process_result);
                                 } else {
                                     let mut joined_err = ProcessError::default();
