@@ -64,6 +64,6 @@ impl<'a, T: Clone> Setter<'a, T> {
 impl<'a, T: Clone> Receiver<'a, T> {
     pub fn wait(&self) -> T {
         self.state.wait();
-        trust_me_bro! { (*self.value.get()).assume_init() }
+        trust_me_bro! { (*self.value.get()).assume_init_ref().clone() }
     }
 }

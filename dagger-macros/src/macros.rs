@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt::Write};
+use std::{collections::HashSet, fmt::Write as _};
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -7,7 +7,7 @@ use syn::{
     parse::{self, Parse},
     parse_macro_input,
     punctuated::Punctuated,
-    spanned::Spanned,
+    spanned::Spanned as _,
     token::{Colon, Comma, Paren, Semi},
 };
 
@@ -23,8 +23,7 @@ struct GraphStructure {
 
 struct Node {
     name: Ident,
-    process: Ident,
-    args: Punctuated<Expr, Comma>,
+    process: Expr,
     parents: Vec<Ident>,
 }
 
@@ -33,16 +32,11 @@ impl Parse for Node {
         let name: Ident = input.parse()?;
         let _: Colon = input.parse()?;
         let _: Colon = input.parse()?;
-        let process: Ident = input.parse()?;
-
-        let args;
-        parenthesized!(args in input);
-        let args = args.parse_terminated(Expr::parse, Comma)?;
+        let process: Expr = input.parse()?;
 
         Ok(Node {
             name,
             process,
-            args,
             parents: Vec::new(),
         })
     }
@@ -134,9 +128,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         }
     }
     nodes.iter_mut().for_each(|node| {
-        let args = node.args.clone();
-        args.iter()
-            .for_each(|arg| identify_parents(arg, node, &node_idents))
+        identify_parents(&node.process.clone(), node, &node_idents);
     });
 
     let dot = {
@@ -144,12 +136,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
             let mut dot = String::from("digraph {");
             writeln!(&mut dot, "graph [rankdir=\"TB\"];").unwrap();
             nodes.iter().for_each(|n| {
-                writeln!(
-                    &mut dot,
-                    "{} [shape=box label=\"{}: {}\"]",
-                    n.name, n.name, n.process
-                )
-                .unwrap();
+                writeln!(&mut dot, "{} [shape=box label=\"{}\"]", n.name, n.name).unwrap();
                 n.parents.iter().for_each(|parent| {
                     writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
                 });
@@ -177,21 +164,9 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         }
     };
 
-    let (node_name, node_process, node_parents, node_args): (
-        Vec<_>,
-        Vec<_>,
-        Vec<Vec<_>>,
-        Vec<Vec<_>>,
-    ) = nodes
+    let (node_name, node_process, node_parents): (Vec<_>, Vec<_>, Vec<Vec<_>>) = nodes
         .into_iter()
-        .map(|node| {
-            (
-                node.name,
-                node.process,
-                node.parents.into_iter().collect(),
-                node.args.into_iter().collect(),
-            )
-        })
+        .map(|node| (node.name, node.process, node.parents.into_iter().collect()))
         .collect();
     let node_data: Vec<_> = node_name
         .iter()
@@ -261,7 +236,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                                 )*
                                 if #node_parent_check {
                                     let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
-                                    let process_result = #node_process(#(#node_args),*).into_process_result(node_name);
+                                    let process_result = #node_process.into_process_result(node_name);
                                     #node_data_tx.set(process_result);
                                 } else {
                                     let mut joined_err = ProcessError::default();
