@@ -196,7 +196,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
     };
 
     quote! {{
-        use dagger::prelude::*;
+        use dagger::__private::*;
         Graph::new(|| {
             #(let #node_data = ProcessData::default();)*
             #(let (#node_data_tx, #node_data_rx) = #node_data.channel();)*
@@ -210,13 +210,14 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                                 )*
                                 if #node_parent_check {
                                     let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
-                                    let process_result = #node_process.into_process_result(node_name);
+                                    let process_value: NodeResult<_> = #node_process;
+                                    let process_result = process_value.into_graph_result(node_name);
                                     #node_data_tx.set(process_result);
                                 } else {
-                                    let mut joined_err = ProcessError::default();
+                                    let mut joined_err = GraphError::default();
                                     #(
                                         if let Err(e) = #node_parents {
-                                            e.push_error(node_name, &mut joined_err);
+                                            e.push_error(&mut joined_err);
                                         }
                                     )*
                                     #node_data_tx.set(Err(joined_err));

@@ -6,6 +6,8 @@ use std::{
     sync::{Arc, Once},
 };
 
+use crate::result::{NodeError, NodeResult};
+
 /// Trust me, I'm right 😎
 /// ## Example:
 /// ```rust
@@ -20,7 +22,7 @@ macro_rules! trust_me_bro {
 }
 
 pub struct ProcessData<T> {
-    value: UnsafeCell<MaybeUninit<ProcessResult<T>>>,
+    value: UnsafeCell<MaybeUninit<GraphResult<T>>>,
     state: Once,
 }
 pub struct Setter<'a, T>(&'a ProcessData<T>);
@@ -47,7 +49,7 @@ impl<T> Default for ProcessData<T> {
 }
 
 impl<'a, T> Setter<'a, T> {
-    pub fn set(self, value: ProcessResult<T>) {
+    pub fn set(self, value: GraphResult<T>) {
         self.0.state.call_once(|| {
             trust_me_bro! {
                 *self.0.value.get() = MaybeUninit::new(value);
@@ -56,53 +58,52 @@ impl<'a, T> Setter<'a, T> {
     }
 }
 impl<'a, T> Receiver<'a, T> {
-    pub fn wait(&self) -> ProcessResult<T> {
+    pub fn wait(&self) -> GraphResult<T> {
         self.0.state.wait();
         trust_me_bro! { (*self.0.value.get()).assume_init_ref().clone() }
     }
 }
 
-pub type ProcessResult<T> = Result<Arc<T>, ProcessError>;
+pub type GraphResult<T> = Result<Arc<T>, GraphError>;
 
-#[derive(Default, Clone)]
-pub struct ProcessError(pub(crate) Vec<Arc<NodeError>>);
-pub(crate) struct NodeError {
-    pub(crate) node: &'static str,
-    display: String,
-    debug: String,
-}
-impl NodeError {
-    fn new<E: Display + Debug>(node: &'static str, error: &E) -> Self {
-        NodeError {
-            node,
-            display: error.to_string(),
-            debug: format!("{error:#?}"),
-        }
-    }
-}
+#[derive(Clone, Default)]
+pub struct GraphError(pub(crate) Vec<(&'static str, NodeError)>);
 
-impl Display for ProcessError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Errors encountered during process execution!")?;
-        self.0.iter().try_for_each(|node_err| {
-            writeln!(f, "    Node {}: {}", node_err.node, node_err.display)
-        })
-    }
-}
-
-impl Debug for ProcessError {
+impl Display for GraphError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Errors encountered during process execution!")?;
         self.0
             .iter()
-            .try_for_each(|node_err| writeln!(f, "    Node {}: {}", node_err.node, node_err.debug))
+            .try_for_each(|node_err| writeln!(f, "    Node {}: {}", node_err.0, node_err.1))
     }
 }
 
-impl Error for ProcessError {}
+impl Debug for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Errors encountered during process execution!")?;
+        self.0
+            .iter()
+            .try_for_each(|node_err| writeln!(f, "    Node {:#?}: {:#?}", node_err.0, node_err.1))
+    }
+}
 
-impl ProcessError {
-    pub fn push_error(&self, _node: &'static str, error: &mut ProcessError) {
+impl Error for GraphError {}
+
+impl GraphError {
+    pub fn push_error(&self, error: &mut GraphError) {
         error.0.extend(self.0.iter().cloned());
+    }
+}
+
+pub trait IntoGraphResult<T> {
+    fn into_graph_result(self, node: &'static str) -> GraphResult<T>;
+}
+
+impl<T> IntoGraphResult<T> for NodeResult<T> {
+    fn into_graph_result(self, node: &'static str) -> GraphResult<T> {
+        match self {
+            Ok(v) => GraphResult::Ok(Arc::new(v)),
+            Err(e) => GraphResult::Err(GraphError(vec![(node, e)])),
+        }
     }
 }

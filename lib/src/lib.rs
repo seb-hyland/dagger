@@ -1,16 +1,18 @@
-pub mod prelude;
-pub mod process_data;
-#[cfg(feature = "visualize")]
-mod visualization;
 use std::{
     collections::{HashMap, HashSet},
     ops::Deref,
     sync::Arc,
 };
 
-pub use dagger_macros::dagger;
+#[doc(hidden)]
+pub mod __private;
+pub mod prelude;
+pub mod process_data;
+pub mod result;
+#[cfg(feature = "visualize")]
+mod visualization;
 
-use crate::prelude::ProcessError;
+pub use dagger_macros::dagger;
 
 pub struct Graph<T, F: Fn() -> T> {
     func: F,
@@ -40,7 +42,7 @@ impl<T, F: Fn() -> T> Graph<T, F> {
 
     pub fn visualize_errors<'a, I>(&'a self, results: I) -> String
     where
-        I: IntoIterator<Item = &'a Result<(), ProcessError>>,
+        I: IntoIterator<Item = &'a Result<(), process_data::GraphError>>,
     {
         #[derive(Debug)]
         enum LineInstruction<'a> {
@@ -85,7 +87,7 @@ impl<T, F: Fn() -> T> Graph<T, F> {
         results.into_iter().for_each(|res| {
             if let Err(e) = res {
                 e.0.iter().for_each(|err| {
-                    failure_origins.insert(err.node);
+                    failure_origins.insert(err.0);
                 });
             }
         });
