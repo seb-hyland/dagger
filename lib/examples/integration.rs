@@ -1,41 +1,22 @@
-use std::ops::Deref;
-
 use dagger::{
     dagger,
     result::{NodeError, NodeResult},
 };
 
 fn main() {
-    let f32toi32 = |v: f32| -> NodeResult<i32> {
-        Ok(v.floor() as i32)
-        // Err("Some error")
-    };
-
     let operation = dagger! {
-        cic :: sum(3, 5);
-        d :: mult(3, 5);
-        e :: div(0, 0);
-        f :: div(0, 0);
-        g :: div(3, 5);
-        h :: f32toi32(*g);
-        i :: sum(3 + 14, *h);
-        g_str_1 :: Ok(g.to_string());
-        g_str :: Ok(g.to_string());
-        g_str_array :: Ok([ g_str_1.deref().clone(), "Hi!".to_string(), cic.to_string() ]);
-        out :: double(*h);
-        (out, e, d, g_str_array)
+        sum :: sum(3, 5);
+        double_1 :: double(sum.clone_inner());
+        double_2 :: double(sum.clone_inner());
+        mult_doubles :: mult(double_1.clone_inner(), double_2.clone_inner());
+        div :: div(double_2.clone_inner(), 0);
+        reliant :: Ok(div.clone_inner() as i32);
+        (mult_doubles, div)
     };
-    let (a, b, c, d) = operation.exe();
-    let err_dag = operation.visualize_errors([
-        &a.map(|_| ()),
-        &b.map(|_| ()),
-        &c.map(|_| ()),
-        &d.map(|_| ()),
-    ]);
-    println!("{}", err_dag);
-
     // let result = operation.exe();
     // let _ = dbg!(result);
+
+    let (_a, _b) = operation.exe_visualize("hi.svg");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {
@@ -55,5 +36,6 @@ fn div(a: i32, b: i32) -> NodeResult<f32> {
 }
 
 fn double(input: i32) -> NodeResult<i32> {
+    // Err(NodeError::msg("Failed"))
     Ok(input * 2)
 }

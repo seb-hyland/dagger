@@ -6,20 +6,14 @@ use syn::{
     Expr, Ident, LitStr, parenthesized,
     parse::{self, Parse},
     parse_macro_input,
-    punctuated::Punctuated,
     spanned::Spanned as _,
     token::{Colon, Comma, Paren, Semi},
     visit::Visit,
 };
 
-enum GraphOutput {
-    Single(Ident),
-    Multi(Punctuated<Ident, Comma>),
-}
-
 struct GraphStructure {
     nodes: Vec<Node>,
-    output: GraphOutput,
+    output: Vec<Ident>,
 }
 
 struct Node {
@@ -55,10 +49,10 @@ impl Parse for GraphStructure {
             let parens_inner;
             parenthesized!(parens_inner in input);
             let output = parens_inner.parse_terminated(Ident::parse, Comma)?;
-            GraphOutput::Multi(output)
+            output.into_iter().collect()
         } else {
             let output: Ident = input.parse()?;
-            GraphOutput::Single(output)
+            vec![output]
         };
         Ok(GraphStructure { nodes, output })
     }
@@ -90,7 +84,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
     impl<'a> Visit<'a> for ParentCollector<'a> {
         fn visit_path(&mut self, path: &'a syn::Path) {
             path.segments.iter().for_each(|seg| {
-                if self.node_idents.contains(&seg.ident) {
+                if self.node_idents.contains(&seg.ident) && self.node.name != seg.ident {
                     self.node.parents.push(seg.ident.clone())
                 }
             });
@@ -105,36 +99,34 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         visitor.visit_expr(&process);
     });
 
-    let dot = {
+    let (dot, visualize_tokens) = {
         if cfg!(feature = "visualize") {
-            let mut dot = String::from("digraph {");
-            writeln!(&mut dot, "graph [rankdir=\"TB\"];").unwrap();
+            let mut dot = String::from("digraph {\n");
+            writeln!(&mut dot, r#"graph [rankdir="TB"]"#).unwrap();
             nodes.iter().for_each(|n| {
-                writeln!(&mut dot, "{} [shape=box label=\"{}\"]", n.name, n.name).unwrap();
+                writeln!(&mut dot, r#"{} [shape=box label="{}"]"#, n.name, n.name).unwrap();
                 n.parents.iter().for_each(|parent| {
                     writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
                 });
             });
-            writeln!(&mut dot, "___process_output [label=Output]").unwrap();
-            match &output {
-                GraphOutput::Single(out_node) => {
-                    writeln!(&mut dot, "{out_node} -> ___process_output").unwrap();
-                }
-                GraphOutput::Multi(out_nodes) => {
-                    out_nodes.iter().for_each(|out_node| {
-                        writeln!(&mut dot, "{out_node} -> ___process_output").unwrap()
-                    });
-                }
-            }
+            writeln!(&mut dot, r#""___process_output" [label=Output]"#).unwrap();
+            output.iter().for_each(|out_node| {
+                writeln!(&mut dot, r#"{out_node} -> "___process_output""#).unwrap()
+            });
             // First } char escapes the second
             writeln!(&mut dot, "}}").unwrap();
             let dot_lit = LitStr::new(&dot, dot.span());
 
-            quote! {
-                #dot_lit
-            }
+            (
+                quote! { #dot_lit },
+                quote! {
+                    if let Some(path) = write_path {
+                        visualize_errors(path, &[#(&#output.as_ref().map(|_| ())),*], dot);
+                    }
+                },
+            )
         } else {
-            quote! {}
+            (quote! {}, quote! {})
         }
     };
 
@@ -177,27 +169,14 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let out_tokens = match output {
-        GraphOutput::Single(out_ident) => {
-            let out_data = Ident::new(&format!("__private_{out_ident}_rx"), out_ident.span());
-            quote! {
-                #out_data.wait()
-            }
-        }
-        GraphOutput::Multi(outputs) => {
-            let out_data: Vec<_> = outputs
-                .iter()
-                .map(|out_ident| Ident::new(&format!("__private_{out_ident}_rx"), out_ident.span()))
-                .collect();
-            quote! {
-                (#(#out_data.wait()),*)
-            }
-        }
-    };
+    let out_idents: Vec<_> = output
+        .iter()
+        .map(|out_ident| Ident::new(&format!("__private_{out_ident}_rx"), out_ident.span()))
+        .collect();
 
     quote! {{
         use dagger::__private::*;
-        Graph::new(|| {
+        let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
             #(let #node_data = ProcessData::default();)*
             #(let (#node_data_tx, #node_data_rx) = #node_data.channel();)*
             ::std::thread::scope(|s| {
@@ -225,10 +204,12 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                             });
                         }
                     )*
-                #out_tokens
+                    let (#(#output),*) = (#(#out_idents.wait()),*);
+                    #visualize_tokens
+                    (#(#output),*)
             })
-        },
-        #dot)
+        };
+        Graph::new(execution_function, #dot)
     }}
     .into()
 }
