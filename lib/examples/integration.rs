@@ -1,3 +1,5 @@
+use std::io;
+
 use dagger::prelude::*;
 
 fn main() {
@@ -8,12 +10,12 @@ fn main() {
         mult_doubles :: mult(double_1.clone_inner(), double_2.clone_inner());
         div :: div(double_2.clone_inner(), 0);
         reliant :: Ok(div.clone_inner() as i32);
-        (mult_doubles, div)
-    };
-    // let result = operation.exe();
-    // let _ = dbg!(result);
 
-    let (_a, _b) = operation.exe_visualize("hi.svg");
+        return (mult_doubles, div);
+    };
+    let _ = dbg!(operation.exe());
+
+    // let (_a, _b) = operation.exe_visualize("hi.svg");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {
@@ -32,7 +34,7 @@ fn div(a: i32, b: i32) -> NodeResult<f32> {
     }
 }
 
-fn double(input: i32) -> NodeResult<i32> {
-    // Err(NodeError::msg("Failed"))
-    Ok(input * 2)
+fn double(_input: i32) -> NodeResult<i32> {
+    Err(io::Error::last_os_error().into())
+    // Ok(input * 2)
 }

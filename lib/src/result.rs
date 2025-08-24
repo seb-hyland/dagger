@@ -15,13 +15,16 @@ pub struct NodeError {
 
 impl Display for NodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error at {}: {}", self.caller, self.error)
+        write!(f, "\"{}\" at {}", self.error, self.caller)
     }
 }
 
 impl Debug for NodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Error at {}: {:#?}", self.caller, self.error)
+        let location = format!("{}", self.caller);
+        let mut dbg = f.debug_struct(&location);
+        dbg.field("Error", &*self.error);
+        dbg.finish()
     }
 }
 
@@ -40,19 +43,23 @@ impl AsRef<dyn Error> for NodeError {
     }
 }
 
-#[derive(Debug)]
-struct MsgError(String);
-impl Display for MsgError {
+struct MsgError<M: Display + Debug>(M);
+impl<M: Display + Debug> Display for MsgError<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
-impl Error for MsgError {}
+impl<M: Display + Debug> Debug for MsgError<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.0)
+    }
+}
+impl<M: Display + Debug> Error for MsgError<M> {}
 
 impl NodeError {
     #[track_caller]
-    pub fn msg<M: ToString>(msg: M) -> NodeError {
-        let error = Arc::new(MsgError(msg.to_string()));
+    pub fn msg<M: Display + Debug + 'static>(msg: M) -> NodeError {
+        let error = Arc::new(MsgError(msg));
         let caller = Location::caller();
         NodeError { error, caller }
     }
