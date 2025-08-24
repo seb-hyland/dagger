@@ -1,7 +1,4 @@
-use dagger::{
-    dagger,
-    result::{NodeError, NodeResult},
-};
+use dagger::prelude::*;
 
 fn main() {
     let operation = dagger! {
