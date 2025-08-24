@@ -7,7 +7,7 @@ use syn::{
     parse::{self, Parse},
     parse_macro_input,
     spanned::Spanned as _,
-    token::{Colon, Comma, Paren, Semi},
+    token::{Colon, Comma, Paren, Return, Semi},
     visit::Visit,
 };
 
@@ -45,6 +45,10 @@ impl Parse for GraphStructure {
             nodes.push(node);
             let _: Semi = input.parse()?;
         }
+        let return_ident = input.peek(Return);
+        if return_ident {
+            let _: Return = input.parse()?;
+        }
         let output = if input.peek(Paren) {
             let parens_inner;
             parenthesized!(parens_inner in input);
@@ -54,6 +58,9 @@ impl Parse for GraphStructure {
             let output: Ident = input.parse()?;
             vec![output]
         };
+        if return_ident && input.peek(Semi) {
+            let _: Semi = input.parse()?;
+        }
         Ok(GraphStructure { nodes, output })
     }
 }
