@@ -5,6 +5,7 @@ pub mod __private;
 pub mod prelude;
 pub mod process_data;
 pub mod result;
+pub mod scheduler;
 #[cfg(feature = "visualize")]
 mod visualization;
 

@@ -4,18 +4,19 @@ use dagger::prelude::*;
 
 fn main() {
     let operation = dagger! {
-        sum :: sum(3, 5);
-        double_1 :: double(sum.clone_inner());
-        double_2 :: double(sum.clone_inner());
-        mult_doubles :: mult(double_1.clone_inner(), double_2.clone_inner());
-        div :: div(double_2.clone_inner(), 0);
+        sum_v :: sum(3, 5);
+        orphan :: Ok(5);
+        left_branch :: double(sum_v.clone_inner());
+        right_branch :: sum(sum_v.clone_inner(), orphan.clone_inner());
+        mult_doubles :: mult(left_branch.clone_inner(), right_branch.clone_inner());
+        div :: div(right_branch.clone_inner(), 0);
         reliant :: Ok(div.clone_inner() as i32);
 
-        return (mult_doubles, div);
+        (mult_doubles, div)
     };
-    let _ = dbg!(operation.exe());
+    // let _ = dbg!(operation.exe());
 
-    // let (_a, _b) = operation.exe_visualize("hi.svg");
+    let (_a, _b) = operation.exe_visualize("hi.svg");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {

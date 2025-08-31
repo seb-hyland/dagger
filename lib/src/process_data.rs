@@ -3,7 +3,8 @@ use std::{
     error::Error,
     fmt::{Debug, Display},
     mem::MaybeUninit,
-    sync::{Arc, Once},
+    ptr,
+    sync::Arc,
 };
 
 use crate::result::{NodeError, NodeResult};
@@ -21,46 +22,29 @@ macro_rules! trust_me_bro {
     };
 }
 
-pub struct ProcessData<T> {
-    value: UnsafeCell<MaybeUninit<GraphResult<T>>>,
-    state: Once,
-}
-pub struct Setter<'a, T>(&'a ProcessData<T>);
-pub struct Receiver<'a, T>(&'a ProcessData<T>);
+pub struct ProcessData<T>(UnsafeCell<MaybeUninit<GraphResult<T>>>);
 
-unsafe impl<'a, T: Sync + Clone> Sync for Setter<'a, T> {}
-unsafe impl<'a, T: Send + Clone> Send for Setter<'a, T> {}
-unsafe impl<'a, T: Sync + Clone> Sync for Receiver<'a, T> {}
-unsafe impl<'a, T: Send + Clone> Send for Receiver<'a, T> {}
-
-impl<T> ProcessData<T> {
-    pub fn channel<'a>(&'a self) -> (Setter<'a, T>, Receiver<'a, T>) {
-        (Setter(self), Receiver(self))
-    }
-}
+unsafe impl<T: Sync + Clone> Send for ProcessData<T> {}
+unsafe impl<T: Sync + Clone> Sync for ProcessData<T> {}
 
 impl<T> Default for ProcessData<T> {
     fn default() -> Self {
-        ProcessData {
-            value: UnsafeCell::new(MaybeUninit::uninit()),
-            state: Once::new(),
-        }
+        ProcessData(UnsafeCell::new(MaybeUninit::uninit()))
     }
 }
 
-impl<'a, T> Setter<'a, T> {
-    pub fn set(self, value: GraphResult<T>) {
-        self.0.state.call_once(|| {
-            trust_me_bro! {
-                *self.0.value.get() = MaybeUninit::new(value);
-            }
-        });
+impl<T> ProcessData<T> {
+    pub fn set(&self, value: GraphResult<T>) {
+        trust_me_bro! {
+            ptr::write(self.0.get(), MaybeUninit::new(value));
+        }
     }
-}
-impl<'a, T> Receiver<'a, T> {
-    pub fn wait(&self) -> GraphResult<T> {
-        self.0.state.wait();
-        trust_me_bro! { (*self.0.value.get()).assume_init_ref().clone() }
+
+    /// ...
+    /// # Safety
+    /// Address must be initialized
+    pub unsafe fn get(&self) -> GraphResult<T> {
+        trust_me_bro! { (*self.0.get()).assume_init_ref().clone() }
     }
 }
 
