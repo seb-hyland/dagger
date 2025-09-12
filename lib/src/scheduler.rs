@@ -3,12 +3,12 @@ use std::{
     ops::Not,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::mpsc::{self, Sender, SyncSender},
-    thread::Scope,
+    thread::{self, Scope},
 };
 
-pub struct Scheduler<'scope, 'env, const NUM_TASKS: usize> {
+pub struct Scheduler<'scope, 'env> {
     scope: &'scope Scope<'scope, 'env>,
-    tasks: [Task<'scope>; NUM_TASKS],
+    tasks: Box<[Task<'scope>]>,
     completed_tasks: usize,
     threads: Vec<Thread<'scope>>,
 }
@@ -24,7 +24,6 @@ pub struct Task<'scope> {
     pub children: &'scope [usize],
     pub task: &'scope (dyn Fn() + Send + Sync),
 }
-
 impl<'scope> Task<'scope> {
     pub fn new(
         num_parents: u32,
@@ -57,14 +56,21 @@ struct TaskResult {
     panic: Option<Box<dyn Any + Send + 'static>>,
 }
 
-impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
-    pub fn new(scope: &'scope Scope<'scope, 'env>, tasks: [Task<'scope>; NUM_TASKS]) -> Self {
-        Scheduler {
-            scope,
-            tasks,
-            completed_tasks: 0,
-            threads: Vec::new(),
-        }
+impl<'scope, 'env> Scheduler<'scope, 'env> {
+    pub fn execute<I>(tasks: I)
+    where
+        I: IntoIterator<Item = Task<'scope>>,
+    {
+        thread::scope(|s| {
+            let tasks: Box<_> = tasks.into_iter().collect();
+            let scheduler = Scheduler {
+                scope: s,
+                completed_tasks: 0,
+                threads: Vec::with_capacity(tasks.len()),
+                tasks,
+            };
+            scheduler.run();
+        })
     }
 
     fn schedule(
@@ -116,7 +122,7 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
         }
     }
 
-    pub fn run(mut self) {
+    fn run(mut self) {
         let (sender, receiver) = mpsc::sync_channel(self.tasks.len().min(50));
         for id in 0..self.tasks.len() {
             if self.tasks[id].num_parents == 0 {
@@ -166,7 +172,7 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
     }
 }
 
-impl<'scope, 'env, const NUM_TASKS: usize> Drop for Scheduler<'scope, 'env, NUM_TASKS> {
+impl<'scope, 'env> Drop for Scheduler<'scope, 'env> {
     fn drop(&mut self) {
         self.threads.iter().for_each(|thread| {
             thread

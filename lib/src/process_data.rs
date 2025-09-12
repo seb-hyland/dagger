@@ -5,7 +5,6 @@ use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
     ptr,
-    sync::Arc,
 };
 
 /// Trust me, I'm right 😎
@@ -42,12 +41,12 @@ impl<T> ProcessData<T> {
     /// ...
     /// # Safety
     /// Address must be initialized
-    pub unsafe fn get(&self) -> GraphResult<T> {
-        trust_me_bro! { (*self.0.get()).assume_init_ref().clone() }
+    pub unsafe fn get(&self) -> Result<&T, &GraphError> {
+        trust_me_bro! { (*self.0.get()).assume_init_ref().as_ref() }
     }
 }
 
-pub type GraphResult<T> = Result<Arc<T>, GraphError>;
+pub type GraphResult<T> = Result<T, GraphError>;
 
 #[derive(Clone, Default)]
 pub struct GraphError(pub(crate) Vec<(&'static str, NodeError)>);
@@ -96,7 +95,7 @@ pub trait IntoGraphResult<T> {
 impl<T> IntoGraphResult<T> for NodeResult<T> {
     fn into_graph_result(self, node: &'static str) -> GraphResult<T> {
         match self {
-            Ok(v) => GraphResult::Ok(Arc::new(v)),
+            Ok(v) => GraphResult::Ok(v),
             Err(e) => GraphResult::Err(GraphError(vec![(node, e)])),
         }
     }
