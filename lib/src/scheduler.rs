@@ -1,7 +1,7 @@
 use std::{
     any::Any,
     ops::Not,
-    panic::{AssertUnwindSafe, RefUnwindSafe, UnwindSafe, catch_unwind, resume_unwind},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::mpsc::{self, Sender, SyncSender},
     thread::Scope,
 };
@@ -139,29 +139,28 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
                 self.completed_tasks += 1;
                 continue;
             }
-            task_children
-                .iter()
-                .enumerate()
-                .for_each(|(child_num, &child_id)| {
-                    let child = &mut self.tasks[child_id];
-                    let all_complete = {
-                        let completed_parents = &mut child.completed_parents;
-                        *completed_parents += 1;
-                        *completed_parents == child.num_parents
-                    };
-                    if all_complete {
-                        if child_num == 0 {
-                            self.schedule(child_id, Some(thread_id), &sender);
-                        } else {
-                            let free_thread_id = self
-                                .threads
-                                .iter()
-                                .enumerate()
-                                .find_map(|(id, thread)| thread.busy.not().then_some(id));
-                            self.schedule(child_id, free_thread_id, &sender);
-                        }
+            let mut child_executed = false;
+            for &child_id in task_children.iter() {
+                let child = &mut self.tasks[child_id];
+                let all_complete = {
+                    child.completed_parents += 1;
+                    child.completed_parents == child.num_parents
+                };
+                if all_complete {
+                    // I'm sorry, little one.
+                    if !child_executed {
+                        self.schedule(child_id, Some(thread_id), &sender);
+                        child_executed = true;
+                    } else {
+                        let free_thread_id = self
+                            .threads
+                            .iter()
+                            .enumerate()
+                            .find_map(|(id, thread)| thread.busy.not().then_some(id));
+                        self.schedule(child_id, free_thread_id, &sender);
                     }
-                });
+                }
+            }
             self.completed_tasks += 1;
         }
     }

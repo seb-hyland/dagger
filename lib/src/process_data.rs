@@ -1,3 +1,4 @@
+use crate::result::{NodeError, NodeResult};
 use std::{
     cell::UnsafeCell,
     error::Error,
@@ -6,8 +7,6 @@ use std::{
     ptr,
     sync::Arc,
 };
-
-use crate::result::{NodeError, NodeResult};
 
 /// Trust me, I'm right 😎
 /// ## Example:

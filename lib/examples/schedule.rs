@@ -43,7 +43,6 @@ fn main() {
         let c = unsafe { c.get() };
         let c_str = c.unwrap().to_string();
         e.set(Ok(Arc::new(c_str)));
-        panic!();
     };
     let e_task = Task::new(1, &[5], &e_fn);
 
