@@ -43,8 +43,6 @@ fn main() {
             // print_complete("mult_doubles");
             mult(*left_branch, *right_branch)
         };
-
-        (cast, div, double_v)
     };
     let res = operation.exe_visualize("visualization.svg");
     println!("{res:#?}");

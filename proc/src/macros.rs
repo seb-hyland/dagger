@@ -16,7 +16,7 @@ use syn::{
 
 struct GraphStructure {
     nodes: Vec<Node>,
-    outputs: Vec<Ident>,
+    output: Option<Vec<Ident>>,
 }
 
 struct Node {
@@ -56,24 +56,23 @@ impl Parse for GraphStructure {
             let parens_inner;
             parenthesized!(parens_inner in input);
             let output = parens_inner.parse_terminated(Ident::parse, Comma)?;
-            output.into_iter().collect()
-        } else {
+            Some(output.into_iter().collect())
+        } else if input.peek(Ident) {
             let output: Ident = input.parse()?;
-            vec![output]
+            Some(vec![output])
+        } else {
+            None
         };
         if return_ident && input.peek(Semi) {
             let _: Semi = input.parse()?;
         }
-        Ok(GraphStructure {
-            nodes,
-            outputs: output,
-        })
+        Ok(GraphStructure { nodes, output })
     }
 }
 
 #[proc_macro]
 pub fn dagger(input: TokenStream) -> TokenStream {
-    let GraphStructure { mut nodes, outputs } = parse_macro_input!(input as GraphStructure);
+    let GraphStructure { mut nodes, output } = parse_macro_input!(input as GraphStructure);
 
     // Collect node idents and check duplicates
     let mut node_idents = HashSet::with_capacity(nodes.len());
@@ -143,19 +142,23 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                     writeln!(&mut dot, "{} -> {}", parent, n.name).unwrap();
                 });
             });
-            writeln!(&mut dot, r#""___process_output" [label=Output]"#).unwrap();
-            outputs.iter().for_each(|out_node| {
-                writeln!(&mut dot, r#"{out_node} -> "___process_output""#).unwrap()
-            });
+            if let Some(o) = output.as_ref() {
+                writeln!(&mut dot, r#""___process_output" [label=Output]"#).unwrap();
+                o.iter().for_each(|out_node| {
+                    writeln!(&mut dot, r#"{out_node} -> "___process_output""#).unwrap()
+                });
+            }
             // First } char escapes the second
             writeln!(&mut dot, "}}").unwrap();
             let dot_lit = LitStr::new(&dot, dot.span());
 
+            let empty_vec = Vec::new();
+            let visualize_output = output.as_ref().unwrap_or(&empty_vec);
             (
                 quote! { #dot_lit },
                 quote! {
                     if let Some(path) = write_path {
-                        visualize_errors(path, &[#(&#outputs.as_ref().map(|_| ())),*], dot);
+                        visualize_errors(path, &[#(&#visualize_output.as_ref().map(|_| ())),*], dot);
                     }
                 },
             )
@@ -204,13 +207,16 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let out_idents: Vec<_> = outputs
+    let output = output.unwrap_or(Vec::new());
+    let out_idents: Vec<_> = output
         .iter()
         .map(|out_ident| Ident::new(&format!("__private_{out_ident}"), out_ident.span()))
         .collect();
 
-    quote! {{
+    quote! {
+        {
             use dagger::__private::*;
+            #[allow(path_statements)]
             let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
                 #(
                     let #node_data = ProcessData::default();
@@ -238,11 +244,10 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                     let #node_task = Task::new(#node_parent_len, &[#(#node_children),*], &#node_data_fn);
                 )*;
                 Scheduler::execute([#(#node_task),*]);
-                let (#(#outputs),*) = (#(unsafe { #out_idents.get_owned() }),*);
+                let (#(#output),*) = (#(unsafe { #out_idents.get_owned() }),*);
                 #visualize_tokens
-                (#(#outputs),*)
+                (#(#output),*)
             };
             Graph::new(execution_function, #dot)
-        }}
-    .into()
+    }}.into()
 }
