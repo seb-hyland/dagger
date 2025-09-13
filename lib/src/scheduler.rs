@@ -172,7 +172,6 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
             }
             self.completed_tasks += 1;
         }
-        println!("Total threads: {}", self.threads.len());
     }
 }
 

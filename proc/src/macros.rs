@@ -216,7 +216,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
     quote! {
         {
             use dagger::__private::*;
-            #[allow(path_statements)]
+            #[allow(path_statements, clippy::unused_unit)]
             let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
                 #(
                     let #node_data = ProcessData::default();
