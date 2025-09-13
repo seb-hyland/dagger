@@ -4,11 +4,12 @@ use std::{
     path::Path,
 };
 
-use crate::process_data::GraphError;
 use layout::{
     backends::svg::SVGWriter,
     gv::{DotParser, GraphBuilder},
 };
+
+use crate::result::GraphError;
 
 pub fn dot_to_svg(input: &str) -> String {
     let graph = DotParser::new(input).process().unwrap();
@@ -67,7 +68,7 @@ pub fn visualize_errors(out_path: &Path, results: &[&Result<(), &GraphError>], d
     let mut failure_origins = HashSet::new();
     results.iter().for_each(|res| {
         if let Err(e) = res {
-            e.0.iter().for_each(|err| {
+            e.iter().for_each(|err| {
                 failure_origins.insert(err.0);
             });
         }

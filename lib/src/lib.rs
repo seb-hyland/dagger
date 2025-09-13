@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::Path, sync::Arc};
+use std::path::Path;
 
 #[doc(hidden)]
 pub mod __private;
@@ -44,15 +44,5 @@ impl<T, F: Fn(Option<&Path>, &'static str) -> T> Graph<T, F> {
 
     pub fn dot(&self) -> &'static str {
         self.dot
-    }
-}
-
-pub trait CloneInner<T> {
-    fn clone_inner(self) -> T;
-}
-
-impl<T: Clone> CloneInner<T> for Arc<T> {
-    fn clone_inner(self) -> T {
-        self.deref().clone()
     }
 }

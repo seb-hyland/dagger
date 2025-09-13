@@ -1,4 +1,7 @@
-use std::{collections::HashSet, fmt::Write as _};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Write as _,
+};
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -13,7 +16,7 @@ use syn::{
 
 struct GraphStructure {
     nodes: Vec<Node>,
-    output: Vec<Ident>,
+    outputs: Vec<Ident>,
 }
 
 struct Node {
@@ -61,14 +64,18 @@ impl Parse for GraphStructure {
         if return_ident && input.peek(Semi) {
             let _: Semi = input.parse()?;
         }
-        Ok(GraphStructure { nodes, output })
+        Ok(GraphStructure {
+            nodes,
+            outputs: output,
+        })
     }
 }
 
 #[proc_macro]
 pub fn dagger(input: TokenStream) -> TokenStream {
-    let GraphStructure { mut nodes, output } = parse_macro_input!(input as GraphStructure);
+    let GraphStructure { mut nodes, outputs } = parse_macro_input!(input as GraphStructure);
 
+    // Collect node idents and check duplicates
     let mut node_idents = HashSet::with_capacity(nodes.len());
     if let Err(e) = nodes.iter().try_for_each(|node| -> Result<(), syn::Error> {
         if !node_idents.insert(node.name.clone()) {
@@ -83,11 +90,11 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         return e.to_compile_error().into();
     }
 
+    // Visitor to identify node parents
     struct ParentCollector<'a> {
         node: &'a mut Node,
         node_idents: &'a HashSet<Ident>,
     }
-
     impl<'a> Visit<'a> for ParentCollector<'a> {
         fn visit_path(&mut self, path: &'a syn::Path) {
             path.segments.iter().for_each(|seg| {
@@ -99,12 +106,32 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         }
     }
 
-    nodes.iter_mut().for_each(|node| {
+    for node in nodes.iter_mut() {
         let node_idents = &node_idents;
         let process = node.process.clone();
         let mut visitor = ParentCollector { node, node_idents };
         visitor.visit_expr(&process);
-    });
+    }
+
+    let mut children_map = HashMap::with_capacity(nodes.len());
+    for node in node_idents {
+        children_map.insert(node, Vec::new());
+    }
+    for (node_idx, node) in nodes.iter().enumerate() {
+        for parent in node.parents.iter() {
+            children_map
+                .get_mut(parent)
+                .expect("Parent should exist in ident map")
+                .push(node_idx);
+        }
+    }
+    let mut node_children = Vec::with_capacity(nodes.len());
+    for node in nodes.iter() {
+        let children = children_map
+            .get(&node.name)
+            .expect("Node should exist in children map");
+        node_children.push(children);
+    }
 
     let (dot, visualize_tokens) = {
         if cfg!(feature = "visualize") {
@@ -117,7 +144,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                 });
             });
             writeln!(&mut dot, r#""___process_output" [label=Output]"#).unwrap();
-            output.iter().for_each(|out_node| {
+            outputs.iter().for_each(|out_node| {
                 writeln!(&mut dot, r#"{out_node} -> "___process_output""#).unwrap()
             });
             // First } char escapes the second
@@ -128,7 +155,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                 quote! { #dot_lit },
                 quote! {
                     if let Some(path) = write_path {
-                        visualize_errors(path, &[#(&#output.as_ref().map(|_| ())),*], dot);
+                        visualize_errors(path, &[#(&#outputs.as_ref().map(|_| ())),*], dot);
                     }
                 },
             )
@@ -145,14 +172,15 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         .iter()
         .map(|name| Ident::new(&format!("__private_{name}"), name.span()))
         .collect();
-    let node_data_tx: Vec<_> = node_name
+    let node_data_fn: Vec<_> = node_name
         .iter()
-        .map(|name| Ident::new(&format!("__private_{name}_tx"), name.span()))
+        .map(|name| Ident::new(&format!("__private_{name}_fn"), name.span()))
         .collect();
-    let node_data_rx: Vec<_> = node_name
+    let node_task: Vec<_> = node_name
         .iter()
-        .map(|name| Ident::new(&format!("__private_{name}_rx"), name.span()))
+        .map(|name| Ident::new(&format!("__private_{name}_task"), name.span()))
         .collect();
+    let node_parent_len: Vec<_> = node_parents.iter().map(|vec| vec.len() as u32).collect();
     let node_name: Vec<_> = node_name
         .into_iter()
         .map(|v| LitStr::new(&v.to_string(), v.span()))
@@ -161,7 +189,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         .iter()
         .map(|node| {
             node.iter()
-                .map(|parent| Ident::new(&format!("__private_{parent}_rx"), parent.span()))
+                .map(|parent| Ident::new(&format!("__private_{parent}"), parent.span()))
                 .collect()
         })
         .collect();
@@ -176,47 +204,43 @@ pub fn dagger(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let out_idents: Vec<_> = output
+    let out_idents: Vec<_> = outputs
         .iter()
-        .map(|out_ident| Ident::new(&format!("__private_{out_ident}_rx"), out_ident.span()))
+        .map(|out_ident| Ident::new(&format!("__private_{out_ident}"), out_ident.span()))
         .collect();
 
     quote! {{
-        use dagger::__private::*;
-        let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
-            #(let #node_data = ProcessData::default();)*
-            #(let (#node_data_tx, #node_data_rx) = #node_data.channel();)*
-            ::std::thread::scope(|s| {
-                    #(
-                        {
-                            let node_name = #node_name;
-                            s.spawn(|| {
-                                #(
-                                    let #node_parents = #node_parent_data.wait();
-                                )*
-                                if #node_parent_check {
-                                    let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
-                                    let process_value: NodeResult<_> = #node_process;
-                                    let process_result = process_value.into_graph_result(node_name);
-                                    #node_data_tx.set(process_result);
-                                } else {
-                                    let mut joined_err = GraphError::default();
-                                    #(
-                                        if let Err(e) = #node_parents {
-                                            e.push_error(&mut joined_err);
-                                        }
-                                    )*
-                                    #node_data_tx.set(Err(joined_err));
+            use dagger::__private::*;
+            let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
+                #(
+                    let #node_data = ProcessData::default();
+                    let #node_data_fn = || {
+                        #(
+                            let #node_parents = unsafe { #node_parent_data.get() };
+                        )*
+                        if #node_parent_check {
+                            let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
+                            let process_value: NodeResult<_> = #node_process;
+                            let process_result = process_value.into_graph_result(#node_name);
+                            #node_data.set(process_result);
+                        } else {
+                            let mut joined_err = GraphError::default();
+                            #(
+                                if let Err(e) = #node_parents {
+                                    e.push_error(&mut joined_err);
                                 }
-                            });
+                            )*
+                            #node_data.set(Err(joined_err));
                         }
-                    )*
-                    let (#(#output),*) = (#(#out_idents.wait()),*);
-                    #visualize_tokens
-                    (#(#output),*)
-            })
-        };
-        Graph::new(execution_function, #dot)
-    }}
+                    };
+                    let #node_task = Task::new(#node_parent_len, &[#(#node_children),*], &#node_data_fn);
+                )*;
+                Scheduler::execute([#(#node_task),*]);
+                let (#(#outputs),*) = (#(unsafe { #out_idents.get_owned() }),*);
+                #visualize_tokens
+                (#(#outputs),*)
+            };
+            Graph::new(execution_function, #dot)
+        }}
     .into()
 }

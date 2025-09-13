@@ -1,4 +1,4 @@
 pub use crate::{
-    CloneInner, dagger,
+    dagger,
     result::{NodeError, NodeResult},
 };

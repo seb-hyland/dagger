@@ -1,22 +1,37 @@
-use std::io;
+use std::{io, thread, time::Duration};
 
 use dagger::prelude::*;
 
 fn main() {
     let operation = dagger! {
         sum_v :: sum(3, 5);
-        orphan :: Ok(5);
-        left_branch :: double(sum_v.clone_inner());
-        right_branch :: sum(sum_v.clone_inner(), orphan.clone_inner());
-        mult_doubles :: mult(left_branch.clone_inner(), right_branch.clone_inner());
-        div :: div(right_branch.clone_inner(), 0);
-        reliant :: Ok(div.clone_inner() as i32);
+        left_branch :: {
+            thread::sleep(Duration::from_secs(3));
+            double(*sum_v)
+        };
+        right_branch :: {
+            println!("Finished right branch!");
+            sum(*sum_v, 3)
+        };
+        mult_doubles :: {
+            println!("Finished mult doubles!");
+            mult(*left_branch, *right_branch)
+        };
+        div :: {
+            println!("Finished div!");
+            div(*right_branch, 5)
+        };
+        reliant :: {
+            println!("Finished reliant!");
+            Ok(*div as i32)
+        };
 
-        (mult_doubles, div)
+        (mult_doubles, div, reliant)
     };
     // let _ = dbg!(operation.exe());
 
-    let (_a, _b) = operation.exe_visualize("hi.svg");
+    let res = operation.exe_visualize("hi.svg");
+    println!("{res:#?}");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {
@@ -37,5 +52,5 @@ fn div(a: i32, b: i32) -> NodeResult<f32> {
 
 fn double(_input: i32) -> NodeResult<i32> {
     Err(io::Error::last_os_error().into())
-    // Ok(input * 2)
+    // Ok(_input * 2)
 }

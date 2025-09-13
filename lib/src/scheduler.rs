@@ -19,10 +19,10 @@ struct Thread<'scope> {
 }
 
 pub struct Task<'scope> {
-    pub num_parents: u32,
-    pub completed_parents: u32,
-    pub children: &'scope [usize],
-    pub task: &'scope (dyn Fn() + Send + Sync),
+    num_parents: u32,
+    completed_parents: u32,
+    children: &'scope [usize],
+    task: &'scope (dyn Fn() + Send + Sync),
 }
 impl<'scope> Task<'scope> {
     pub fn new(

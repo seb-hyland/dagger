@@ -1,11 +1,6 @@
-use crate::result::{NodeError, NodeResult};
-use std::{
-    cell::UnsafeCell,
-    error::Error,
-    fmt::{Debug, Display},
-    mem::MaybeUninit,
-    ptr,
-};
+use std::{cell::UnsafeCell, mem::MaybeUninit, ptr};
+
+use crate::result::{GraphError, GraphResult};
 
 /// Trust me, I'm right 😎
 /// ## Example:
@@ -44,59 +39,11 @@ impl<T> ProcessData<T> {
     pub unsafe fn get(&self) -> Result<&T, &GraphError> {
         trust_me_bro! { (*self.0.get()).assume_init_ref().as_ref() }
     }
-}
 
-pub type GraphResult<T> = Result<T, GraphError>;
-
-#[derive(Clone, Default)]
-pub struct GraphError(pub(crate) Vec<(&'static str, NodeError)>);
-
-impl Display for GraphError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.iter().try_for_each(|node_err| {
-            writeln!(f, "Node {} failed with error {}", node_err.0, node_err.1)
-        })
-    }
-}
-
-impl Debug for GraphError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        struct NodeErrorTuple<'a>(&'static str, &'a NodeError);
-        impl<'a> Debug for NodeErrorTuple<'a> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                let name = format!("Node[{}]", self.0);
-                let mut dbg = f.debug_struct(&name);
-                dbg.field("Location", &self.1);
-                dbg.finish()
-            }
-        }
-
-        let mut list = f.debug_list();
-        self.0.iter().for_each(|node_err| {
-            let err_struct = NodeErrorTuple(node_err.0, &node_err.1);
-            list.entry(&err_struct);
-        });
-        list.finish()
-    }
-}
-
-impl Error for GraphError {}
-
-impl GraphError {
-    pub fn push_error(&self, error: &mut GraphError) {
-        error.0.extend(self.0.iter().cloned());
-    }
-}
-
-pub trait IntoGraphResult<T> {
-    fn into_graph_result(self, node: &'static str) -> GraphResult<T>;
-}
-
-impl<T> IntoGraphResult<T> for NodeResult<T> {
-    fn into_graph_result(self, node: &'static str) -> GraphResult<T> {
-        match self {
-            Ok(v) => GraphResult::Ok(v),
-            Err(e) => GraphResult::Err(GraphError(vec![(node, e)])),
-        }
+    /// ...
+    /// # Safety
+    /// Address must be initialized
+    pub unsafe fn get_owned(self) -> Result<T, GraphError> {
+        trust_me_bro! { self.0.into_inner().assume_init() }
     }
 }
