@@ -153,9 +153,9 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
                     child.completed_parents == child.num_parents
                 };
                 if all_complete {
-                    // I'm sorry, little one.
                     if !child_executed {
                         self.schedule(child_id, Some(thread_id), &sender);
+                        // I'm sorry, little one.
                         child_executed = true;
                     } else {
                         let free_thread_id = self
@@ -167,8 +167,12 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
                     }
                 }
             }
+            if !child_executed {
+                self.threads[thread_id].busy = false;
+            }
             self.completed_tasks += 1;
         }
+        println!("Total threads: {}", self.threads.len());
     }
 }
 

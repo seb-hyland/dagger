@@ -1,36 +1,52 @@
-use std::{io, thread, time::Duration};
+use std::{
+    thread,
+    time::{Duration, Instant},
+};
 
 use dagger::prelude::*;
 
 fn main() {
+    let start = Instant::now();
+    let print_complete = |process_name: &'static str| {
+        println!(
+            "Finished {} at {}s",
+            process_name,
+            start.elapsed().as_secs_f32()
+        )
+    };
     let operation = dagger! {
-        sum_v :: sum(3, 5);
+        sum_v :: {
+            // print_complete("sum_v");
+            sum(3, 5)
+        };
         left_branch :: {
             thread::sleep(Duration::from_secs(3));
             double(*sum_v)
         };
         right_branch :: {
-            println!("Finished right branch!");
+            // print_complete("right_branch");
             sum(*sum_v, 3)
         };
-        mult_doubles :: {
-            println!("Finished mult doubles!");
-            mult(*left_branch, *right_branch)
+        cast :: {
+            // print_complete("cast");
+            Ok(*mult_doubles as f32)
         };
         div :: {
-            println!("Finished div!");
-            div(*right_branch, 5)
+            // print_complete("div");
+            div(*mult_doubles, 5)
         };
-        reliant :: {
-            println!("Finished reliant!");
-            Ok(*div as i32)
+        double_v :: {
+            // print_complete("double");
+            double(*mult_doubles)
+        };
+        mult_doubles :: {
+            // print_complete("mult_doubles");
+            mult(*left_branch, *right_branch)
         };
 
-        (mult_doubles, div, reliant)
+        (cast, div, double_v)
     };
-    // let _ = dbg!(operation.exe());
-
-    let res = operation.exe_visualize("hi.svg");
+    let res = operation.exe_visualize("visualization.svg");
     println!("{res:#?}");
 }
 
@@ -51,6 +67,6 @@ fn div(a: i32, b: i32) -> NodeResult<f32> {
 }
 
 fn double(_input: i32) -> NodeResult<i32> {
-    Err(io::Error::last_os_error().into())
-    // Ok(_input * 2)
+    // Err(std::io::Error::last_os_error().into())
+    Ok(_input * 2)
 }

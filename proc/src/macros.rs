@@ -214,6 +214,8 @@ pub fn dagger(input: TokenStream) -> TokenStream {
             let execution_function = |write_path: Option<&::std::path::Path>, dot: &'static str| {
                 #(
                     let #node_data = ProcessData::default();
+                )*
+                #(
                     let #node_data_fn = || {
                         #(
                             let #node_parents = unsafe { #node_parent_data.get() };
