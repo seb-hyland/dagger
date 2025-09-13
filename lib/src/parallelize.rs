@@ -9,12 +9,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub fn parallelize_with_time_limit<T, O>(
-    slice: &[T],
+pub fn parallelize_with_time_limit<I, T, O>(
+    iter: I,
     func: fn(T) -> O,
     limit: Duration,
 ) -> Box<[Option<O>]>
 where
+    I: IntoIterator<Item = T>,
     T: Send + Sync + Clone + 'static,
     O: Send + 'static,
 {
@@ -22,9 +23,9 @@ where
     let received_counter = Arc::new(AtomicUsize::new(0));
     let start = Instant::now();
     let main_thread = thread::current();
-    let length = slice.len();
 
-    slice.iter().enumerate().for_each(|(i, input)| {
+    let mut length = 0;
+    for (i, input) in iter.into_iter().enumerate() {
         let tx = tx.clone();
         let counter = Arc::clone(&received_counter);
         let main_thread = main_thread.clone();
@@ -38,7 +39,9 @@ where
                 main_thread.unpark();
             }
         });
-    });
+
+        length += 1;
+    }
 
     let time_remaining = || limit.saturating_sub(start.elapsed());
     loop {
