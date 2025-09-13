@@ -2,6 +2,7 @@ use std::path::Path;
 
 #[doc(hidden)]
 pub mod __private;
+pub mod parallelize;
 pub mod prelude;
 pub mod process_data;
 pub mod result;
