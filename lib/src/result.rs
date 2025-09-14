@@ -21,7 +21,7 @@ impl<T> IntoGraphResult<T> for NodeResult<T> {
 
 #[derive(Clone)]
 pub struct NodeError {
-    error: Arc<dyn Error + Send + 'static>,
+    error: Arc<dyn Error + Send + Sync + 'static>,
     caller: &'static Location<'static>,
 }
 
@@ -40,7 +40,7 @@ impl Debug for NodeError {
     }
 }
 
-impl<E: Error + Send + 'static> From<E> for NodeError {
+impl<E: Error + Send + Sync + 'static> From<E> for NodeError {
     #[track_caller]
     fn from(value: E) -> Self {
         let error = Arc::new(value);
@@ -55,22 +55,22 @@ impl AsRef<dyn Error> for NodeError {
     }
 }
 
-struct MsgError<M: Display + Debug + Send>(M);
-impl<M: Display + Debug + Send> Display for MsgError<M> {
+struct MsgError<M: Display + Debug + Send + Sync>(M);
+impl<M: Display + Debug + Send + Sync> Display for MsgError<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
-impl<M: Display + Debug + Send> Debug for MsgError<M> {
+impl<M: Display + Debug + Send + Sync> Debug for MsgError<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self.0)
     }
 }
-impl<M: Display + Debug + Send> Error for MsgError<M> {}
+impl<M: Display + Debug + Send + Sync> Error for MsgError<M> {}
 
 impl NodeError {
     #[track_caller]
-    pub fn msg<M: Display + Debug + Send + 'static>(msg: M) -> NodeError {
+    pub fn msg<M: Display + Debug + Send + Sync + 'static>(msg: M) -> NodeError {
         let error = Arc::new(MsgError(msg));
         let caller = Location::caller();
         NodeError { error, caller }
