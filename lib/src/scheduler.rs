@@ -92,6 +92,8 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
                     }))
                     .expect("Thread channel should not hangup!");
                 thread.busy = true;
+                #[cfg(feature = "debuginfo")]
+                println!("Scheduled task {task_id} on EXISTING thread {thread_id}");
             }
             None => {
                 let (sender, receiver) = mpsc::channel();
@@ -117,6 +119,8 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
                         task_id,
                     }))
                     .expect("Thread channel should not hangup!");
+                #[cfg(feature = "debuginfo")]
+                println!("Scheduled task {task_id} on NEW thread {new_thread_id}");
                 self.threads.push(Thread { sender, busy: true });
             }
         }
@@ -172,6 +176,8 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
             }
             self.completed_tasks += 1;
         }
+        #[cfg(feature = "debuginfo")]
+        println!("TOTAL THREADS USED: {}", self.threads.len());
     }
 }
 

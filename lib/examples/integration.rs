@@ -20,18 +20,17 @@ fn main() {
             sum(3, 5)
         };
         left_branch :: {
-            thread::sleep(Duration::from_secs(3));
             double(*sum_v)
         };
         right_branch :: {
             // print_complete("right_branch");
-            sum(*sum_v, 3)
+            div(*sum_v, 0)
         };
         cast :: {
             // print_complete("cast");
             Ok(*mult_doubles as f32)
         };
-        div :: {
+        div_v :: {
             // print_complete("div");
             div(*mult_doubles, 5)
         };
@@ -41,11 +40,15 @@ fn main() {
         };
         mult_doubles :: {
             // print_complete("mult_doubles");
-            mult(*left_branch, *right_branch)
+            mult(*left_branch, *right_branch as i32)
         };
+        double_left_branch :: {
+            double(*left_branch)
+        };
+        return (cast, double_left_branch);
     };
-    let res = operation.exe_visualize("visualization.svg");
-    println!("{res:#?}");
+    let res = operation.dot();
+    println!("{res}");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {

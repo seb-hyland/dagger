@@ -16,7 +16,7 @@ pub fn parallelize_with_time_limit<I, T, O>(
 ) -> Box<[Option<O>]>
 where
     I: IntoIterator<Item = T>,
-    T: Send + Sync + Clone + 'static,
+    T: Send + Clone + 'static,
     O: Send + 'static,
 {
     let (tx, rx) = mpsc::channel::<(usize, O)>();

@@ -1,6 +1,6 @@
 [package]
 name = "dagger"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 
 [lib]
@@ -13,3 +13,4 @@ layout-rs = { version = "0.1.3", optional = true }
 [features]
 default = ["visualize"]
 visualize = ["dep:layout-rs", "dagger-macros/visualize"]
+debuginfo = []
