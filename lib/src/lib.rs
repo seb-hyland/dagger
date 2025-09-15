@@ -1,3 +1,4 @@
+#![allow(clippy::macro_metavars_in_unsafe)]
 use std::path::Path;
 
 #[doc(hidden)]
