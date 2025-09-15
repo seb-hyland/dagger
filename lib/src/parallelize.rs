@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     iter,
     sync::{
         Arc,
@@ -56,4 +57,21 @@ where
         results[i] = Some(data);
     }
     results
+}
+
+pub fn parallelize<I, T, O>(
+    iter: I,
+    func: fn(T) -> O,
+) -> Box<[Result<O, Box<dyn Any + Send + 'static>>]>
+where
+    I: IntoIterator<Item = T>,
+    T: Send,
+    O: Send,
+{
+    thread::scope(|s| {
+        iter.into_iter()
+            .map(|item| s.spawn(|| func(item)))
+            .map(|handle| handle.join())
+            .collect()
+    })
 }
