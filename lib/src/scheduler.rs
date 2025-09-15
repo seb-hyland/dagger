@@ -1,16 +1,21 @@
 use std::{
     any::Any,
-    ops::Not,
+    array,
+    mem::MaybeUninit,
+    ops::{Index, IndexMut, Not},
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    slice,
     sync::mpsc::{self, Sender, SyncSender},
     thread::{self, Scope},
 };
 
-pub struct Scheduler<'scope, 'env> {
+use crate::trust_me_bro;
+
+pub struct Scheduler<'scope, 'env, const NUM_TASKS: usize> {
     scope: &'scope Scope<'scope, 'env>,
-    tasks: Box<[Task<'scope>]>,
+    tasks: Slice<Task<'scope>, NUM_TASKS>,
     completed_tasks: usize,
-    threads: Vec<Thread<'scope>>,
+    threads: ArrayVec<Thread<'scope>, NUM_TASKS>,
 }
 
 struct Thread<'scope> {
@@ -39,15 +44,14 @@ impl<'scope> Task<'scope> {
     }
 }
 
+enum Message<'scope> {
+    Task(TaskMsg<'scope>),
+    Shutdown,
+}
 struct TaskMsg<'scope> {
     task: &'scope (dyn Fn() + Send + Sync),
     thread_id: usize,
     task_id: usize,
-}
-
-enum Message<'scope> {
-    Task(TaskMsg<'scope>),
-    Shutdown,
 }
 
 struct TaskResult {
@@ -56,18 +60,109 @@ struct TaskResult {
     panic: Option<Box<dyn Any + Send + 'static>>,
 }
 
-impl<'scope, 'env> Scheduler<'scope, 'env> {
-    pub fn execute<I>(tasks: I)
-    where
-        I: IntoIterator<Item = Task<'scope>>,
-    {
+enum Slice<T, const N: usize> {
+    Stack([T; N]),
+    Heap(Box<[T]>),
+}
+impl<T, const N: usize> Index<usize> for Slice<T, N> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            Self::Stack(arr) => &arr[index],
+            Self::Heap(arr) => &arr[index],
+        }
+    }
+}
+impl<T, const N: usize> IndexMut<usize> for Slice<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match self {
+            Self::Stack(arr) => &mut arr[index],
+            Self::Heap(arr) => &mut arr[index],
+        }
+    }
+}
+impl<T, const N: usize> Slice<T, N> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Stack(arr) => arr.len(),
+            Self::Heap(arr) => arr.len(),
+        }
+    }
+}
+
+enum ArrayVec<T, const N: usize> {
+    Array([MaybeUninit<T>; N], usize),
+    Vec(Vec<T>),
+}
+impl<T, const N: usize> ArrayVec<T, N> {
+    fn new_array() -> Self {
+        Self::Array(array::from_fn(|_| MaybeUninit::uninit()), 0)
+    }
+    fn iter(&self) -> slice::Iter<'_, T> {
+        match self {
+            Self::Array(arr, len) => {
+                let slice = trust_me_bro! {
+                    slice::from_raw_parts(arr.as_ptr() as *const T, *len)
+                };
+                slice.iter()
+            }
+            Self::Vec(vec) => vec.iter(),
+        }
+    }
+    fn push(&mut self, value: T) {
+        match self {
+            Self::Array(arr, len) => {
+                arr[*len] = MaybeUninit::new(value);
+                *len += 1;
+            }
+            Self::Vec(vec) => vec.push(value),
+        }
+    }
+    fn len(&self) -> usize {
+        match self {
+            Self::Array(_, len) => *len,
+            Self::Vec(vec) => vec.len(),
+        }
+    }
+}
+impl<T, const N: usize> Index<usize> for ArrayVec<T, N> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        match self {
+            Self::Array(arr, len) => {
+                if index >= *len {
+                    unreachable!("Index into uninitialized memory!");
+                } else {
+                    trust_me_bro! { arr[index].assume_init_ref() }
+                }
+            }
+            Self::Vec(vec) => &vec[index],
+        }
+    }
+}
+impl<T, const N: usize> IndexMut<usize> for ArrayVec<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        match self {
+            Self::Array(arr, len) => {
+                if index >= *len {
+                    unreachable!("Index into uninitialized memory!");
+                } else {
+                    trust_me_bro! { arr[index].assume_init_mut() }
+                }
+            }
+            Self::Vec(vec) => &mut vec[index],
+        }
+    }
+}
+
+impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
+    pub fn execute(tasks: [Task<'scope>; NUM_TASKS]) {
         thread::scope(|s| {
-            let tasks: Box<_> = tasks.into_iter().collect();
             let scheduler = Scheduler {
                 scope: s,
                 completed_tasks: 0,
-                threads: Vec::with_capacity(tasks.len()),
-                tasks,
+                threads: ArrayVec::new_array(),
+                tasks: Slice::Stack(tasks),
             };
             scheduler.run();
         })
@@ -181,7 +276,7 @@ impl<'scope, 'env> Scheduler<'scope, 'env> {
     }
 }
 
-impl<'scope, 'env> Drop for Scheduler<'scope, 'env> {
+impl<'scope, 'env, const NUM_TASKS: usize> Drop for Scheduler<'scope, 'env, NUM_TASKS> {
     fn drop(&mut self) {
         self.threads.iter().for_each(|thread| {
             thread

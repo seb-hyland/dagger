@@ -1,19 +1,7 @@
+use crate::trust_me_bro;
 use std::{cell::UnsafeCell, mem::MaybeUninit, ptr};
 
 use crate::result::{GraphError, GraphResult};
-
-/// Trust me, I'm right 😎
-/// ## Example:
-/// ```rust
-/// trust_me_bro! {
-///     // Some unsafe operations
-/// }
-/// ```
-macro_rules! trust_me_bro {
-    ($($token:tt)*) => {
-        unsafe { $($token)* }
-    };
-}
 
 pub struct ProcessData<T>(UnsafeCell<MaybeUninit<GraphResult<T>>>);
 

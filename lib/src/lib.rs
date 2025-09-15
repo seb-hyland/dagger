@@ -47,3 +47,17 @@ impl<T, F: Fn(Option<&Path>, &'static str) -> T> Graph<T, F> {
         self.dot
     }
 }
+
+/// Trust me, I'm right 😎
+/// ## Example:
+/// ```rust
+/// trust_me_bro! {
+///     // Some unsafe operations
+/// }
+/// ```
+#[macro_export]
+macro_rules! trust_me_bro {
+    ($($token:tt)*) => {
+        unsafe { $($token)* }
+    };
+}

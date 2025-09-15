@@ -47,8 +47,8 @@ fn main() {
         };
         return (cast, double_left_branch);
     };
-    let res = operation.dot();
-    println!("{res}");
+    let res = operation.exe();
+    println!("{res:#?}");
 }
 
 fn sum(a: i32, b: i32) -> NodeResult<i32> {
