@@ -13,15 +13,15 @@ mod visualization;
 
 pub use dagger_macros::dagger;
 
-pub struct Graph<T, F: Fn(Option<&Path>, &'static str) -> T> {
-    func: F,
+pub struct Graph<T> {
+    func: fn(Option<&Path>, &'static str) -> T,
     #[cfg(feature = "visualize")]
     dot: &'static str,
 }
 
 #[cfg(not(feature = "visualize"))]
-impl<T, F: Fn(Option<&Path>, &'static str) -> T> Graph<T, F> {
-    pub fn new(func: F) -> Graph<T, F> {
+impl<T> Graph<T> {
+    pub fn new(func: fn(Option<&Path>, &'static str) -> T) -> Graph<T, F> {
         Graph { func }
     }
 
@@ -31,8 +31,8 @@ impl<T, F: Fn(Option<&Path>, &'static str) -> T> Graph<T, F> {
 }
 
 #[cfg(feature = "visualize")]
-impl<T, F: Fn(Option<&Path>, &'static str) -> T> Graph<T, F> {
-    pub fn new(func: F, dot: &'static str) -> Graph<T, F> {
+impl<T> Graph<T> {
+    pub fn new(func: fn(Option<&Path>, &'static str) -> T, dot: &'static str) -> Graph<T> {
         Graph { func, dot }
     }
 
