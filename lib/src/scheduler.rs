@@ -98,6 +98,9 @@ impl<T, const N: usize> ArrayVec<T, N> {
     fn new_array() -> Self {
         Self::Array(array::from_fn(|_| MaybeUninit::uninit()), 0)
     }
+    fn new_vec() -> Self {
+        Self::Vec(Vec::new())
+    }
     fn iter(&self) -> slice::Iter<'_, T> {
         match self {
             Self::Array(arr, len) => {
@@ -151,6 +154,22 @@ impl<T, const N: usize> IndexMut<usize> for ArrayVec<T, N> {
                 }
             }
             Self::Vec(vec) => &mut vec[index],
+        }
+    }
+}
+impl<T, const N: usize> Drop for ArrayVec<T, N> {
+    fn drop(&mut self) {
+        match self {
+            ArrayVec::Array(arr, len) =>
+            {
+                #[allow(clippy::needless_range_loop)]
+                for i in 0..*len {
+                    unsafe {
+                        arr[i].assume_init_drop();
+                    }
+                }
+            }
+            ArrayVec::Vec(_) => {}
         }
     }
 }
@@ -278,11 +297,11 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
 
 impl<'scope, 'env, const NUM_TASKS: usize> Drop for Scheduler<'scope, 'env, NUM_TASKS> {
     fn drop(&mut self) {
-        self.threads.iter().for_each(|thread| {
+        for thread in self.threads.iter() {
             thread
                 .sender
                 .send(Message::Shutdown)
                 .expect("Thread channel hung up before shutdown message!")
-        });
+        }
     }
 }
