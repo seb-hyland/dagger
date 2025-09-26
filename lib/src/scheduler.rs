@@ -206,12 +206,12 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
                     }))
                     .expect("Thread channel should not hangup!");
                 thread.busy = true;
-                #[cfg(feature = "debuginfo")]
-                println!("Scheduled task {task_id} on EXISTING thread {thread_id}");
             }
             None => {
                 let (sender, receiver) = mpsc::channel();
                 let main_channel = main_channel.clone();
+                // Vec has n-1 elements, so new thread would be nth element
+                let new_thread_id = self.threads.len();
                 self.scope.spawn(move || {
                     while let Ok(Message::Task(msg)) = receiver.recv() {
                         let result = catch_unwind(AssertUnwindSafe(msg.task));
@@ -224,8 +224,6 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
                             .expect("Host channel should not hangup before child thread!");
                     }
                 });
-                // Vec has n-1 elements, so new thread would be nth element
-                let new_thread_id = self.threads.len();
                 sender
                     .send(Message::Task(TaskMsg {
                         task,
@@ -233,8 +231,6 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
                         task_id,
                     }))
                     .expect("Thread channel should not hangup!");
-                #[cfg(feature = "debuginfo")]
-                println!("Scheduled task {task_id} on NEW thread {new_thread_id}");
                 self.threads.push(Thread { sender, busy: true });
             }
         }
@@ -290,8 +286,6 @@ impl<'scope, 'env, const NUM_TASKS: usize> Scheduler<'scope, 'env, NUM_TASKS> {
             }
             self.completed_tasks += 1;
         }
-        #[cfg(feature = "debuginfo")]
-        println!("TOTAL THREADS USED: {}", self.threads.len());
     }
 }
 

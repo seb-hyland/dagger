@@ -32,6 +32,15 @@ impl<T> ProcessData<T> {
     /// # Safety
     /// Address must be initialized
     pub unsafe fn get_owned(self) -> Result<T, GraphError> {
-        trust_me_bro! { self.0.into_inner().assume_init() }
+        let manual_drop = std::mem::ManuallyDrop::new(self);
+        trust_me_bro! {
+            std::ptr::read(&manual_drop.0).into_inner().assume_init()
+        }
+    }
+}
+
+impl<T> Drop for ProcessData<T> {
+    fn drop(&mut self) {
+        unsafe { self.0.get_mut().assume_init_drop() }
     }
 }

@@ -1,3 +1,6 @@
 target/*
 *.svg
 lib/examples/expand.rs
+crox/
+*.mm_profdata
+chrome_profiler.json

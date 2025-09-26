@@ -228,7 +228,7 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                         )*
                         if #node_parent_check {
                             let (#(#node_parents),*) = (#(#node_parents.unwrap()),*);
-                            let process_value: NodeResult<_> = #node_process;
+                            let process_value: NodeResult<_> = { #node_process };
                             let process_result = process_value.into_graph_result(#node_name);
                             #node_data.set(process_result);
                         } else {
