@@ -1,7 +1,8 @@
-use crate::trust_me_bro;
+use crate::{
+    result::{GraphError, GraphResult},
+    trust_me_bro,
+};
 use std::{cell::UnsafeCell, mem::MaybeUninit, ptr};
-
-use crate::result::{GraphError, GraphResult};
 
 pub struct ProcessData<T>(UnsafeCell<MaybeUninit<GraphResult<T>>>);
 
@@ -10,21 +11,19 @@ unsafe impl<T: Sync + Clone> Sync for ProcessData<T> {}
 
 impl<T> Default for ProcessData<T> {
     fn default() -> Self {
-        ProcessData(UnsafeCell::new(MaybeUninit::uninit()))
+        const { ProcessData(UnsafeCell::new(MaybeUninit::uninit())) }
     }
 }
 
 impl<T> ProcessData<T> {
     pub fn set(&self, value: GraphResult<T>) {
-        trust_me_bro! {
-            ptr::write(self.0.get(), MaybeUninit::new(value));
-        }
+        trust_me_bro! { ptr::write(self.0.get(), MaybeUninit::new(value)) }
     }
 
     /// ...
     /// # Safety
     /// Address must be initialized
-    pub unsafe fn get(&self) -> Result<&T, &GraphError> {
+    pub const unsafe fn get(&self) -> Result<&T, &GraphError> {
         trust_me_bro! { (*self.0.get()).assume_init_ref().as_ref() }
     }
 
@@ -33,9 +32,7 @@ impl<T> ProcessData<T> {
     /// Address must be initialized
     pub unsafe fn get_owned(self) -> Result<T, GraphError> {
         let manual_drop = std::mem::ManuallyDrop::new(self);
-        trust_me_bro! {
-            std::ptr::read(&manual_drop.0).into_inner().assume_init()
-        }
+        trust_me_bro! { std::ptr::read(&manual_drop.0).into_inner().assume_init() }
     }
 }
 

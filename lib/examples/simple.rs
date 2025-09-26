@@ -4,7 +4,7 @@ use std::hint::black_box;
 fn expensive() -> i32 {
     black_box({
         let mut v = 0;
-        for i in 0..10000 {
+        for i in 0..1000 {
             v += i;
         }
         v
