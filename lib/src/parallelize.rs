@@ -69,9 +69,10 @@ where
     O: Send,
 {
     thread::scope(|s| {
-        iter.into_iter()
+        let handles: Vec<_> = iter
+            .into_iter()
             .map(|item| s.spawn(|| func(item)))
-            .map(|handle| handle.join())
-            .collect()
+            .collect();
+        handles.into_iter().map(|handle| handle.join()).collect()
     })
 }

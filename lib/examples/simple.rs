@@ -1,14 +1,17 @@
 use dagger::prelude::*;
-use std::hint::black_box;
+use std::{
+    hash::{DefaultHasher, Hash, Hasher},
+    hint::black_box,
+};
 
-fn expensive() -> i32 {
+fn expensive() {
     black_box({
-        let mut v = 0;
-        for i in 0..1000 {
-            v += i;
+        let mut hasher = DefaultHasher::new();
+        for i in 0..1_000 {
+            i.hash(&mut hasher);
         }
-        v
-    })
+        hasher.finish()
+    });
 }
 fn main() {
     let graph = dagger! {
