@@ -1,4 +1,4 @@
-use dagger::prelude::*;
+use dagger_lib::prelude::*;
 
 fn main() {
     let graph = dagger! {

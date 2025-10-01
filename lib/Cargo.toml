@@ -1,6 +1,6 @@
 [package]
-name = "dagger"
-version = "0.1.9"
+name = "dagger_lib"
+version = "0.1.10"
 edition = "2024"
 
 [lib]

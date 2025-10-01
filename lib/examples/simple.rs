@@ -1,4 +1,4 @@
-use dagger::prelude::*;
+use dagger_lib::prelude::*;
 use std::{
     hash::{DefaultHasher, Hash, Hasher},
     hint::black_box,

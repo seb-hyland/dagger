@@ -1,4 +1,4 @@
-use dagger::scheduler::{Scheduler, Task};
+use dagger_lib::scheduler::{Scheduler, Task};
 
 fn main() {
     let a_fn = || println!("a");

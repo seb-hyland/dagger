@@ -1,6 +1,6 @@
 use std::io;
 
-use dagger::{
+use dagger_lib::{
     process_data::ProcessData,
     result::{NodeError, NodeResult},
     scheduler::{Scheduler, Task},

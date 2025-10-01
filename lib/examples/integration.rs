@@ -1,6 +1,5 @@
+use dagger_lib::prelude::*;
 use std::time::Instant;
-
-use dagger::prelude::*;
 
 fn main() {
     let start = Instant::now();
