@@ -1,3 +1,4 @@
+use crate::trust_me_bro;
 use std::{
     any::Any,
     array,
@@ -8,8 +9,6 @@ use std::{
     sync::mpsc::{self, Sender, SyncSender},
     thread::{self, Scope},
 };
-
-use crate::trust_me_bro;
 
 pub struct Scheduler<'scope, 'env, const NUM_TASKS: usize> {
     scope: &'scope Scope<'scope, 'env>,

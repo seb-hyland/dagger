@@ -70,6 +70,18 @@ impl Parse for GraphStructure {
     }
 }
 
+/// Constructs a DAG from the input expressions, executing in parallel
+/// based on the flow of data
+/// # Example
+/// ```rust
+/// dagger! {
+///     a :: Ok(5);
+///     b :: Ok(a + 3);
+///     c :: Ok(a - 3);
+///     d :: Ok(b + c);
+///     return d;
+/// }
+/// ```
 #[proc_macro]
 pub fn dagger(input: TokenStream) -> TokenStream {
     let GraphStructure { mut nodes, output } = parse_macro_input!(input as GraphStructure);
@@ -133,7 +145,8 @@ pub fn dagger(input: TokenStream) -> TokenStream {
     }
 
     let (dot, visualize_tokens) = {
-        if cfg!(feature = "visualize") {
+        #[cfg(feature = "visualize")]
+        {
             let mut dot = String::from("digraph {\n");
             writeln!(&mut dot, r#"graph [rankdir="TB"]"#).unwrap();
             nodes.iter().for_each(|n| {
@@ -162,7 +175,9 @@ pub fn dagger(input: TokenStream) -> TokenStream {
                     }
                 },
             )
-        } else {
+        }
+        #[cfg(not(feature = "visualize"))]
+        {
             (quote! {}, quote! {})
         }
     };

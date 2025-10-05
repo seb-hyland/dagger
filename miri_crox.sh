@@ -1,5 +1,5 @@
 #!/bin/sh
-rm -r crox/
+rm -rf crox/
 
 export MIRIFLAGS="-Zmiri-measureme=crox"
 cargo +nightly miri run "$@"

@@ -4,11 +4,13 @@ use crate::{
 };
 use std::{cell::UnsafeCell, mem::MaybeUninit, ptr};
 
+/// Stores the output value of a node
 pub struct ProcessData<T>(UnsafeCell<MaybeUninit<GraphResult<T>>>);
 
 unsafe impl<T: Sync + Clone> Send for ProcessData<T> {}
 unsafe impl<T: Sync + Clone> Sync for ProcessData<T> {}
 
+/// Constructs an uninitialized [`ProcessData`] instance
 impl<T> Default for ProcessData<T> {
     fn default() -> Self {
         const { ProcessData(UnsafeCell::new(MaybeUninit::uninit())) }
@@ -16,26 +18,30 @@ impl<T> Default for ProcessData<T> {
 }
 
 impl<T> ProcessData<T> {
-    pub fn set(&self, value: GraphResult<T>) {
+    /// Sets the value of the [`ProcessData`] instance
+    pub const fn set(&self, value: GraphResult<T>) {
         trust_me_bro! { ptr::write(self.0.get(), MaybeUninit::new(value)) }
     }
 
-    /// ...
+    /// Gets the value of the current [`ProcessData`] instance.
     /// # Safety
-    /// Address must be initialized
+    /// The value must be initialized before this method is called
     pub const unsafe fn get(&self) -> Result<&T, &GraphError> {
         trust_me_bro! { (*self.0.get()).assume_init_ref().as_ref() }
     }
 
-    /// ...
+    /// Takes ownership of the current [`ProcessData`] instance.
     /// # Safety
-    /// Address must be initialized
+    /// The value must be initialized before this method is called
     pub unsafe fn get_owned(self) -> Result<T, GraphError> {
         let manual_drop = std::mem::ManuallyDrop::new(self);
         trust_me_bro! { std::ptr::read(&manual_drop.0).into_inner().assume_init() }
     }
 }
 
+/// Drops the inner value held by this [`ProcessData`] instance
+/// # Safety
+/// The value must not be dropped while uninitialized
 impl<T> Drop for ProcessData<T> {
     fn drop(&mut self) {
         unsafe { self.0.get_mut().assume_init_drop() }

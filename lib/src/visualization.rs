@@ -124,5 +124,6 @@ pub fn visualize_errors(out_path: &Path, results: &[&Result<(), &GraphError>], d
         .collect::<Vec<_>>()
         .join("\n");
 
+    println!("{dot_final}");
     render_svg(&dot_final, out_path);
 }

@@ -1,17 +1,17 @@
 use dagger_lib::prelude::*;
 
 fn main() {
-    let graph = dagger! {
-        f :: Ok(d + 5);
-        a :: Ok(5);
-        e :: Ok(d + 5);
-        b :: Err(NodeError::msg("failed process"));
-        d :: Ok(b + c);
-        c :: Ok(a + 5);
+    fn failing_function() -> NodeResult<String> {
+        Err(NodeError::msg("Function failed!"))
+    }
 
-        return (c, f);
-    };
-    let dagger_output = graph.exe_visualize("visualization.svg");
-    // let dagger_output = graph.exe();
-    println!("dagger_output = {dagger_output:?}");
+    let result = dagger! {
+        a :: Ok(5);
+        b :: Ok(a + 3);
+        c :: Ok(a - 3);
+        d :: Ok(b + c);
+        return d;
+    }
+    .exe();
+    println!("{result:#?}");
 }

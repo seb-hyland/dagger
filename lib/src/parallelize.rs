@@ -10,6 +10,30 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Runs a transformation on each element of an iterator in parallel
+///
+/// Output elements will be of variant `Err` if the transformation panics
+pub fn parallelize<I, T, O>(
+    iter: I,
+    func: fn(T) -> O,
+) -> Box<[Result<O, Box<dyn Any + Send + 'static>>]>
+where
+    I: IntoIterator<Item = T>,
+    T: Send,
+    O: Send,
+{
+    thread::scope(|s| {
+        let handles: Vec<_> = iter
+            .into_iter()
+            .map(|item| s.spawn(|| func(item)))
+            .collect();
+        handles.into_iter().map(|handle| handle.join()).collect()
+    })
+}
+
+/// Identical to [`parallelize`], but times out after the specified duration
+///
+/// Output elements will be `None` if the transformation times out OR panics
 pub fn parallelize_with_time_limit<I, T, O>(
     iter: I,
     func: fn(T) -> O,
@@ -57,22 +81,4 @@ where
         results[i] = Some(data);
     }
     results
-}
-
-pub fn parallelize<I, T, O>(
-    iter: I,
-    func: fn(T) -> O,
-) -> Box<[Result<O, Box<dyn Any + Send + 'static>>]>
-where
-    I: IntoIterator<Item = T>,
-    T: Send,
-    O: Send,
-{
-    thread::scope(|s| {
-        let handles: Vec<_> = iter
-            .into_iter()
-            .map(|item| s.spawn(|| func(item)))
-            .collect();
-        handles.into_iter().map(|handle| handle.join()).collect()
-    })
 }

@@ -4,7 +4,7 @@ use std::{
     hint::black_box,
 };
 
-fn expensive() {
+fn expensive(input: i32) -> NodeResult<i32> {
     black_box({
         let mut hasher = DefaultHasher::new();
         for i in 0..1_000 {
@@ -12,34 +12,32 @@ fn expensive() {
         }
         hasher.finish()
     });
+    Ok(input)
 }
 fn main() {
-    let graph = dagger! {
-        a :: {
-            expensive();
-            Ok(5)
-        };
-        b :: {
-            expensive();
-            Ok(a + 3)
-        };
-        c :: {
-            expensive();
-            Ok(a + 5)
-        };
-        d :: {
-            expensive();
-            Ok(b + c)
-        };
-        e :: {
-            expensive();
-            Ok(d + 3)
-        };
-        f :: {
-            expensive();
-            Ok(d + 5)
-        };
-    };
-    let dagger_output = graph.exe();
-    println!("dagger_output = {dagger_output:?}");
+    fn tleap(_: (), _: ()) -> NodeResult<()> {
+        Ok(())
+    }
+    fn analysis_process_1(_: &()) -> NodeResult<()> {
+        Ok(())
+    }
+    fn analysis_process_2(_: &()) -> NodeResult<()> {
+        Ok(())
+    }
+    fn analysis_process_3(_: &()) -> NodeResult<()> {
+        Ok(())
+    }
+    let (path, molecule_name) = ((), ());
+    println!(
+        "{}",
+        dagger! {
+            tleap_out :: tleap(path, molecule_name);
+            analysis_1 :: analysis_process_1(tleap_out);
+            analysis_2 :: analysis_process_2(tleap_out);
+            analysis_3 :: analysis_process_3(analysis_2);
+        }
+        .dot()
+    );
+    // let dagger_output = graph.exe();
+    // println!("{dagger_output:?}");
 }

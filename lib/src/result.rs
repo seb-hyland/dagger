@@ -6,7 +6,9 @@ use std::{
     sync::Arc,
 };
 
+/// The return type of nodes
 pub type NodeResult<T> = Result<T, NodeError>;
+#[doc(hidden)]
 pub trait IntoGraphResult<T> {
     fn into_graph_result(self, node: &'static str) -> GraphResult<T>;
 }
@@ -19,6 +21,7 @@ impl<T> IntoGraphResult<T> for NodeResult<T> {
     }
 }
 
+/// A wrapper type to hold information about errors that occur during node execution
 #[derive(Clone)]
 pub struct NodeError {
     error: Arc<dyn Error + Send + Sync + 'static>,
@@ -69,6 +72,11 @@ impl<M: Display + Debug + Send + Sync> Debug for MsgError<M> {
 impl<M: Display + Debug + Send + Sync> Error for MsgError<M> {}
 
 impl NodeError {
+    /// Constructs a [`NodeError`] from any type that implements [`Display`] and [`Debug`]
+    /// # Example
+    /// ```rust
+    /// let err = NodeError::msg("This is an error message");
+    /// ```
     #[track_caller]
     pub fn msg<M: Display + Debug + Send + Sync + 'static>(msg: M) -> NodeError {
         let error = Arc::new(MsgError(msg));
@@ -77,8 +85,10 @@ impl NodeError {
     }
 }
 
+/// The type of values returned by graph execution
 pub type GraphResult<T> = Result<T, GraphError>;
 
+/// A wrapper type to hold one or more errors that occur during graph execution
 #[derive(Clone, Default)]
 pub struct GraphError(Vec<(&'static str, NodeError)>);
 impl GraphError {
